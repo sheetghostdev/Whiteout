@@ -107,13 +107,18 @@ at accelerated time: it walks at player speed, picks targets, casts twice a
 second, saves up for unlocks and shops by strategy (cloud focus, front focus,
 wind combos, multipliers first, inefficient scattering, deliberate storm
 combining, expensive-first, saver, region-by-region). With the current
-tuning every strategy completes the world in roughly 27–34 bot-minutes,
+tuning every strategy completes the world in roughly 22–27 bot-minutes,
 never waits more than about two minutes between affordable purchases, and
-unlocks abilities in order (Frost Front ≈3 min, Arctic Wind ≈6–7, Blizzard
-≈12–16, Avalanche ≈17–22, Polar Vortex ≈21–27). Because the bot aims and
-reacts far faster than a person, this was tuned with the intent of a first
-human playthrough of roughly an hour; that estimate still needs real
-playtesting to confirm.
+unlocks abilities in order (Frost Front ≈3.5 min, Arctic Wind ≈6.5–7.5,
+Blizzard ≈12–14, Avalanche ≈14–17, Polar Vortex ≈16–21). Because the bot
+aims and reacts far faster than a person, a first human playthrough should
+take considerably longer; that still needs real playtesting to confirm.
+
+A power benchmark (`scripts/tests/power_bench.gd`) checks that every new
+ability feels stronger than what the player already has: using the bot's
+actual upgrade levels at the moment each power unlocks, it measures each
+ability's sustained freeze rate on fresh ground next to the Snow Cloud's.
+Each must be at least 1.3× the cloud (currently 1.8–3×).
 
 `scenes/visual_tour.tscn` boots the game, performs scripted actions and
 saves screenshots to `user://tour/` (scenarios: `basic`, `fx`, `late`,

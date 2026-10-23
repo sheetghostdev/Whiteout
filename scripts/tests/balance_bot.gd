@@ -18,6 +18,7 @@ var t := 0.0
 var goal := Vector2.INF
 var rng := RandomNumberGenerator.new()
 var unlock_times := {}
+var unlock_levels := {}   # ability -> upgrade levels at the moment it unlocked
 var milestone_times := {}
 var first_purchase := -1.0
 var last_purchase := 0.0
@@ -41,7 +42,10 @@ func setup(host: Node, p_terrain: TerrainData, p_strategy: String, seed_value: i
 	w = WeatherManager.new()
 	host.add_child(w)
 	w.setup(terrain, cov, prog, false, seed_value)
-	prog.ability_unlocked.connect(func(id): unlock_times[id] = t)
+	prog.ability_unlocked.connect(func(id):
+		unlock_times[id] = t
+		unlock_levels[id] = prog.levels.duplicate()
+		_windows[id] = {"start": t, "area0": w.area_by_source.duplicate(), "casts0": (prog.stats["casts"] as Dictionary).duplicate()})
 
 
 func dispose() -> void:
@@ -67,13 +71,36 @@ func run(max_time: float) -> Dictionary:
 		if _check <= 0.0:
 			_check = 0.5
 			_checks()
+			_close_windows()
 	return summary()
+
+
+## For each newly unlocked ability: m² frozen per cast and per second over
+## the next WINDOW seconds, next to the Snow Cloud over the same stretch.
+const WINDOW := 150.0
+var _windows := {}
+var power_report := {}
+
+
+func _close_windows() -> void:
+	for id in _windows.keys():
+		var win: Dictionary = _windows[id]
+		if t - float(win["start"]) < WINDOW and not completed:
+			continue
+		var dt := t - float(win["start"])
+		var row := {}
+		for k in [id, "snow_cloud"]:
+			var area := float(w.area_by_source.get(k, 0.0)) - float(win["area0"].get(k, 0.0))
+			var casts := int(prog.stats["casts"].get(k, 0)) - int(win["casts0"].get(k, 0))
+			row[k] = {"per_s": area / maxf(dt, 1.0), "per_cast": area / maxf(casts, 1), "casts": casts}
+		power_report[id] = row
+		_windows.erase(id)
 
 
 func summary() -> Dictionary:
 	return {"strategy": strategy, "completed": completed, "time": t, "fraction": cov.world_completion(),
 		"lifetime_frost": prog.lifetime_frost, "unlocks": unlock_times, "milestones": milestone_times,
-		"first_purchase": first_purchase, "longest_gap": longest_gap, "purchases": purchases}
+		"first_purchase": first_purchase, "longest_gap": longest_gap, "purchases": purchases, "power": power_report}
 
 
 func _checks() -> void:
@@ -200,10 +227,11 @@ func _choose_target(id: String) -> Vector2:
 			for e in w.effects_of("snow_cloud"):
 				if e.pos.distance_to(pos) < 30.0:
 					clouds += 1
-			var want := 1 if strategy in ["combine", "wind_combo"] else 2
-			if clouds >= want:
-				return goal
-			return Vector2.INF
+			# The gust's own frost trail is worth casting toward green ground;
+			# combo strategies wait for clouds to carry.
+			if strategy in ["combine", "wind_combo"] and clouds < 1:
+				return Vector2.INF
+			return goal
 		"blizzard", "polar_vortex":
 			if strategy == "combine" and id == "blizzard":
 				for e in w.effects_of("blizzard"):
@@ -219,11 +247,7 @@ func _choose_target(id: String) -> Vector2:
 				var p := pos + Vector2.from_angle(a) * rng.randf() * r * 0.9
 				if Avalanche.release_check(terrain, cov, p) != "":
 					continue
-				var down := -terrain.gradient(p.x, p.y).normalized()
-				var score := 0.0
-				for s in [15.0, 35.0, 60.0]:
-					var q: Vector2 = p + down * s
-					score += 1.0 - cov.sample_coverage(q.x, q.y)
+				var score := Avalanche.downhill_green(terrain, cov, p)
 				if score > best_score:
 					best_score = score
 					best = p

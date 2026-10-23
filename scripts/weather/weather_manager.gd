@@ -25,6 +25,8 @@ var prevailing := Vector2(0.35, 0.15)
 var player_pos := Vector3.ZERO
 var player_aim := Vector2(0, -1)
 var chain_counts := {}
+var root_sources := {}       # root uid -> ability that cast it
+var area_by_source := {}     # ability -> m² frozen by its whole chain
 var water_rate := 0.18
 var frost_rate := 0.0        # smoothed Frost per second for the HUD
 var _acc := 0.0
@@ -113,6 +115,9 @@ func spawn(e: WeatherEffect, root: int = -1) -> WeatherEffect:
 	e.uid = _uid
 	_uid += 1
 	e.root_id = root if root >= 0 else e.uid
+	if root < 0:
+		root_sources[e.uid] = e.kind
+	e.source = root_sources.get(e.root_id, e.kind)
 	e.manager = self
 	e.prev_pos = e.pos
 	e.last_step_time = sim_time
@@ -230,6 +235,8 @@ func add_gain(raw: float, cov_delta: float, source: WeatherEffect) -> void:
 	if source != null:
 		source.frost_gained += raw * mult
 	_pending_frost += raw * mult
+	if source != null:
+		area_by_source[source.source] = float(area_by_source.get(source.source, 0.0)) + cov_delta
 	prog.stats["area_frozen"] = float(prog.stats.get("area_frozen", 0.0)) + cov_delta
 
 

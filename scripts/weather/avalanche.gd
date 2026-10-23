@@ -49,15 +49,25 @@ static func release_check(terrain: TerrainData, cov: SnowCoverage, p: Vector2) -
 	return ""
 
 
+## How much green ground lies downhill of a release point (0..3).
+static func downhill_green(terrain: TerrainData, cov: SnowCoverage, p: Vector2) -> float:
+	var down := -terrain.gradient(p.x, p.y, 4.0).normalized()
+	var score := 0.0
+	for s in [20.0, 45.0, 75.0]:
+		var q: Vector2 = p + down * s
+		score += 1.0 - cov.sample_coverage(q.x, q.y)
+	return score
+
+
 func start(p: Vector2, p_seed: int) -> void:
 	pos = p
 	prev_pos = p
 	seed_value = p_seed
 	rng.seed = p_seed
-	var down := -manager.terrain.gradient(p.x, p.y)
+	var down := -manager.terrain.gradient(p.x, p.y, 4.0)
 	if down.length() < 0.01:
 		down = Vector2(0, 1)
-	heads = [_new_head(p, down.normalized() * 3.0, w0)]
+	heads = [_new_head(p, down.normalized() * max_speed * 0.6, w0)]
 
 
 func _new_head(p: Vector2, v: Vector2, w: float) -> Dictionary:
@@ -84,15 +94,26 @@ func sim_step(dt: float) -> void:
 		any = true
 		var p: Vector2 = h["p"]
 		var v: Vector2 = h["v"]
-		var g := terrain.gradient(p.x, p.y)
-		v += -g * 9.0 * dt
-		v *= pow(momentum, dt)
+		# Heading + speed model: gravity speeds the slide up or down along its
+		# heading and turns the heading toward downhill at a limited rate, so
+		# the snow carries through dips and gullies instead of rocking in them.
+		var g := terrain.gradient(p.x, p.y, 4.0)
+		var heading := v.normalized() if v.length() > 0.05 else -g.normalized()
+		var speed := v.length()
+		speed += -g.dot(heading) * 9.0 * dt
+		speed *= pow(momentum, dt)
+		var down := -g
+		if down.length() > 0.03 and heading.dot(down.normalized()) > -0.2:
+			var turn := clampf(heading.angle_to(down.normalized()), -1.2 * dt, 1.2 * dt)
+			heading = heading.rotated(turn)
 		var cap := max_speed * (1.3 if tsunami else 1.0)
-		if v.length() > cap:
-			v = v.normalized() * cap
+		var trav: float = h["trav"]
+		if trav < max_dist * 0.6 and -g.dot(heading) > -0.6:
+			speed = maxf(speed, max_speed * 0.45)
+		speed = clampf(speed, 0.0, cap)
+		v = heading * speed
 		h["age"] = float(h["age"]) + dt
 		var sp := v.length()
-		var trav: float = h["trav"]
 		if (sp < 0.9 and float(h["age"]) > 1.5) or trav >= max_dist:
 			h["alive"] = false
 			continue
@@ -102,7 +123,9 @@ func sim_step(dt: float) -> void:
 			continue
 		var grow := 1.0 + trav / (45.0 if tsunami else 90.0)
 		var grow_cap := 4.5 if tsunami else 2.2
-		var w: float = float(h["w"]) * minf(grow, grow_cap) * float(h["boost"])
+		# Snow fans out across gentle run-out ground at the foot of a slope.
+		var fan := lerpf(1.6, 1.0, clampf(g.length() / 0.3, 0.0, 1.0))
+		var w: float = float(h["w"]) * minf(grow, grow_cap) * float(h["boost"]) * fan
 		var amt := strength * (1.0 + trav / 300.0 if tsunami else 1.0) * float(h["boost"])
 		var gain := cov.apply_sweep(p.x, p.y, np.x, np.y, w * 0.5, amt)
 		manager.add_gain(gain, cov.last_cov_delta, self)
@@ -113,8 +136,9 @@ func sim_step(dt: float) -> void:
 		h["trav"] = trav + sp * dt
 		h["cur_w"] = w
 		manager.note_storm_size(w * 0.5)
-		# Water: frozen lakes ring out a shockwave, open water stops the slide.
-		if terrain.is_water(np.x, np.y):
+		# Lake water: frozen ice rings out a shockwave, open water stops the
+		# slide. Streams are simply crossed.
+		if terrain.is_water(np.x, np.y) and terrain.lake_distance(np.x, np.y) < 90.0:
 			if cov.get_coverage(np.x, np.y) >= 0.9:
 				if not shock_done:
 					shock_done = true

@@ -54,13 +54,16 @@ func sim_step(dt: float) -> void:
 		return
 	heading += manager.rng.randf_range(-0.35, 0.35) * dt
 	var own := Vector2.from_angle(heading) * speed * 0.5 + manager.prevailing * 0.6
-	if roaming:
-		seek_timer -= dt
-		if seek_timer <= 0.0 or seek == Vector2.INF:
-			seek = cov.find_nearest_unfrozen_area(pos, 160.0, 24, manager.avoid_list(self))
-			seek_timer = 2.5
-		if seek != Vector2.INF and seek.distance_to(pos) > radius * 0.25:
-			own = (seek - pos).normalized() * speed * prog.stat("storm_nav")
+	# Storms drift toward nearby green ground; Roaming Winter widens the
+	# search and commits fully to it.
+	seek_timer -= dt
+	if seek_timer <= 0.0 or seek == Vector2.INF:
+		var reach := 160.0 if roaming else radius * 3.0
+		seek = cov.find_nearest_unfrozen_area(pos, reach, 24, manager.avoid_list(self))
+		seek_timer = 2.5
+	if seek != Vector2.INF and seek.distance_to(pos) > radius * 0.25:
+		var pull := (seek - pos).normalized() * speed * prog.stat("storm_nav")
+		own = pull if roaming else own * 0.4 + pull * 0.6
 	integrate_motion(dt, own, wind_resp, 0.6)
 	var area := PI * radius * radius
 	var stride := clampi(int(area / 2500.0) + 1, 1, 6)

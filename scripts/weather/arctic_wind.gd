@@ -102,7 +102,7 @@ func sim_step(dt: float) -> void:
 			else:
 				amount *= 1.0 + snow_load * snowfield * 3.0
 				snow_load = maxf(snow_load - dt * 0.6, 0.0)
-		var gain := cov.apply_sweep(a.x, a.y, b.x, b.y, width * 0.3, amount)
+		var gain := cov.apply_sweep(a.x, a.y, b.x, b.y, width * 0.45, amount)
 		manager.add_gain(gain, cov.last_cov_delta, self)
 		front_dist = nd
 	pos = origin + (Vector2.ZERO if cyclonic else dir * length * 0.5)

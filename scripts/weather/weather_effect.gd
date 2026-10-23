@@ -7,6 +7,7 @@ extends Node3D
 var kind := ""
 var uid := 0
 var root_id := 0          # id of the cast that started this chain
+var source := ""          # ability whose cast started this chain
 var generation := 0
 var manager: WeatherManager
 var pos := Vector2.ZERO

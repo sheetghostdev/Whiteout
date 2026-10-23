@@ -16,6 +16,7 @@ func run(t, full: bool) -> void:
 		var res := bot.run(MAX_TIME)
 		bot.dispose()
 		res["wall"] = (Time.get_ticks_msec() - t0) / 1000.0
+		var levels: Dictionary = bot.unlock_levels.duplicate(true)
 		rows.append(res)
 		_print_row(res)
 		var name: String = res["strategy"]
@@ -30,6 +31,7 @@ func run(t, full: bool) -> void:
 			# corresponds to roughly an hour of human play.
 			t.check(float(res["time"]) > 22.0 * 60.0 and float(res["time"]) < 60.0 * 60.0, "standard: bot completion time in the tuned window (%s)" % UIKit.fmt_time(res["time"]))
 			t.check(u.has("polar_vortex") and float(u["polar_vortex"]) < float(res["time"]) * 0.85, "standard: Polar Vortex arrives with real work left")
+			_power_check(t, levels)
 
 
 func _print_row(r: Dictionary) -> void:
@@ -45,3 +47,16 @@ func _print_row(r: Dictionary) -> void:
 		r["completed"], UIKit.fmt_time(r["time"]), float(r["first_purchase"]), UIKit.fmt_time(r["longest_gap"]), int(r["purchases"]), float(r["wall"])])
 	print("        unlocks: ", "  ".join(parts))
 	print("        coverage: ", "  ".join(ms))
+
+
+## Each new power should feel clearly stronger than the Snow Cloud the player
+## already has at the moment it unlocks (measured on fresh ground).
+func _power_check(t, levels: Dictionary) -> void:
+	for a in GameBalance.ABILITY_ORDER:
+		if not levels.has(a):
+			continue
+		var me := PowerBench.measure(t, t.shared_terrain(), levels[a], a)
+		var cloud := PowerBench.measure(t, t.shared_terrain(), levels[a], "snow_cloud")
+		var ratio := me / maxf(cloud, 0.01)
+		print("        at %-12s unlock: %7.1f m²/s   vs Snow Cloud %6.1f m²/s   (%.1fx)" % [a, me, cloud, ratio])
+		t.check(ratio >= 1.3, "%s is clearly stronger than the cloud when it unlocks (%.1fx)" % [a, ratio])

@@ -366,8 +366,7 @@ func surface_height(x: float, z: float) -> float:
 	return maxf(h, w)
 
 
-func gradient(x: float, z: float) -> Vector2:
-	var e := 1.0
+func gradient(x: float, z: float, e: float = 1.0) -> Vector2:
 	var hx := sample_height(x + e, z) - sample_height(x - e, z)
 	var hz := sample_height(x, z + e) - sample_height(x, z - e)
 	return Vector2(hx, hz) / (2.0 * e)
