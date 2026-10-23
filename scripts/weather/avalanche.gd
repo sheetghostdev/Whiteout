@@ -11,10 +11,6 @@ var momentum := 0.55
 var split_rate := 0.08
 var strength := 0.6
 var max_heads := 3
-var tsunami := false
-var chain := false
-var chains := 0
-var shock_done := false
 var w0 := 7.0
 var seed_value := 0
 var rng := RandomNumberGenerator.new()
@@ -22,17 +18,15 @@ var rng := RandomNumberGenerator.new()
 var _visuals := {}
 
 
-func init_from_stats(prog: Progression) -> void:
+func configure(width: float) -> void:
 	kind = "avalanche"
-	w0 = prog.stat("av_width")
-	max_dist = prog.stat("av_distance")
-	max_speed = prog.stat("av_speed")
-	momentum = prog.stat("av_momentum")
-	split_rate = prog.stat("av_split")
-	strength = prog.stat("av_strength") * prog.stat("efficiency_mult")
-	max_heads = int(prog.stat("av_branches"))
-	tsunami = prog.has("snow_tsunami")
-	chain = prog.has("chain_avalanche")
+	w0 = width
+	max_dist = 90.0
+	max_speed = 14.0
+	momentum = 0.6
+	split_rate = 0.06
+	strength = 0.6
+	max_heads = 2
 	life = 999.0
 	radius = w0
 
@@ -106,7 +100,7 @@ func sim_step(dt: float) -> void:
 		if down.length() > 0.03 and heading.dot(down.normalized()) > -0.2:
 			var turn := clampf(heading.angle_to(down.normalized()), -1.2 * dt, 1.2 * dt)
 			heading = heading.rotated(turn)
-		var cap := max_speed * (1.3 if tsunami else 1.0)
+		var cap := max_speed
 		var trav: float = h["trav"]
 		if trav < max_dist * 0.6 and -g.dot(heading) > -0.6:
 			speed = maxf(speed, max_speed * 0.45)
@@ -121,12 +115,12 @@ func sim_step(dt: float) -> void:
 		if not terrain.in_bounds(np.x, np.y, 3.0):
 			h["alive"] = false
 			continue
-		var grow := 1.0 + trav / (45.0 if tsunami else 90.0)
-		var grow_cap := 4.5 if tsunami else 2.2
+		var grow := 1.0 + trav / 90.0
+		var grow_cap := 1.6
 		# Snow fans out across gentle run-out ground at the foot of a slope.
-		var fan := lerpf(1.6, 1.0, clampf(g.length() / 0.3, 0.0, 1.0))
+		var fan := lerpf(1.3, 1.0, clampf(g.length() / 0.3, 0.0, 1.0))
 		var w: float = float(h["w"]) * minf(grow, grow_cap) * float(h["boost"]) * fan
-		var amt := strength * (1.0 + trav / 300.0 if tsunami else 1.0) * float(h["boost"])
+		var amt := strength * float(h["boost"])
 		var gain := cov.apply_sweep(p.x, p.y, np.x, np.y, w * 0.5, amt)
 		manager.add_gain(gain, cov.last_cov_delta, self)
 		h["boost"] = 1.0
@@ -136,20 +130,12 @@ func sim_step(dt: float) -> void:
 		h["trav"] = trav + sp * dt
 		h["cur_w"] = w
 		manager.note_storm_size(w * 0.5)
-		# Lake water: frozen ice rings out a shockwave, open water stops the
-		# slide. Streams are simply crossed.
+		# Lake water stops the slide in a spray of snow. Streams are crossed.
 		if terrain.is_water(np.x, np.y) and terrain.lake_distance(np.x, np.y) < 90.0:
-			if cov.get_coverage(np.x, np.y) >= 0.9:
-				if not shock_done:
-					shock_done = true
-					manager.spawn_pulse(np, 55.0 + w * 2.5, 0.75, root_id, "shock")
-					manager.discover("ice_shockwave", np)
-				h["v"] = v * 0.97
-			else:
-				var g2 := cov.apply_disc(np.x, np.y, w * 0.8, 0.6)
-				manager.add_gain(g2, cov.last_cov_delta, self)
-				h["alive"] = false
-				continue
+			var g2 := cov.apply_disc(np.x, np.y, w * 0.8, 0.6)
+			manager.add_gain(g2, cov.last_cov_delta, self)
+			h["alive"] = false
+			continue
 		# Splitting.
 		h["split_cd"] = float(h["split_cd"]) - dt
 		if split_rate > 0.0 and alive_heads() + new_heads.size() < max_heads and float(h["split_cd"]) <= 0.0:
@@ -163,19 +149,6 @@ func sim_step(dt: float) -> void:
 				new_heads.append(nh)
 			else:
 				h["split_cd"] = 1.0
-		# Chain Avalanche: a snowy slope beside the path may release too.
-		if chain and chains < 3 and float(h["trav"]) > 40.0 and rng.randf() < 0.3 * dt:
-			var side := v.normalized().orthogonal() * (1.0 if rng.randf() < 0.5 else -1.0)
-			var q := np + side * rng.randf_range(25.0, 45.0)
-			if release_check(terrain, cov, q) == "" and manager.can_spawn("avalanche"):
-				chains += 1
-				var av := Avalanche.new()
-				av.init_from_stats(manager.prog)
-				av.generation = generation + 1
-				av.chain = generation < 2
-				manager.spawn(av, root_id)
-				av.start(q, rng.randi())
-				manager.add_chain_link(root_id)
 	heads.append_array(new_heads)
 	if heads.size() > 0:
 		var lead: Dictionary = heads[0]
@@ -234,7 +207,7 @@ func visual_update(delta: float, t: float) -> void:
 		if v.length() > 0.1:
 			node.rotation.y = atan2(v.x, v.y)
 		var mass: MeshInstance3D = node.get_node("Mass")
-		mass.scale = Vector3(w * 0.55, w * 0.3 * (1.2 if tsunami else 1.0), w * 0.45) * lerpf(0.4, 1.0, fade)
+		mass.scale = Vector3(w * 0.55, w * 0.3, w * 0.45) * lerpf(0.4, 1.0, fade)
 		(mass.get_meta("mat") as ShaderMaterial).set_shader_parameter("fade", fade)
 		var spray: GPUParticles3D = node.get_node("Spray")
 		spray.emitting = fade > 0.5
@@ -268,7 +241,7 @@ func to_dict() -> Dictionary:
 			var p: Vector2 = h["p"]
 			var v: Vector2 = h["v"]
 			hs.append([p.x, p.y, v.x, v.y, h["w"], h["trav"]])
-	d.merge({"heads": hs, "seed": seed_value, "shock": shock_done, "chains": chains, "w0": w0})
+	d.merge({"heads": hs, "seed": seed_value, "w0": w0})
 	return d
 
 
@@ -276,8 +249,6 @@ func from_dict(d: Dictionary) -> void:
 	super.from_dict(d)
 	seed_value = int(d.get("seed", 0))
 	rng.seed = seed_value
-	shock_done = bool(d.get("shock", false))
-	chains = int(d.get("chains", 0))
 	w0 = float(d.get("w0", w0))
 	heads = []
 	for a in d.get("heads", []):

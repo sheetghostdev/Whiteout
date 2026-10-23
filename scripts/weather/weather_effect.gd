@@ -7,7 +7,8 @@ extends Node3D
 var kind := ""
 var uid := 0
 var root_id := 0          # id of the cast that started this chain
-var source := ""          # ability whose cast started this chain
+var source := ""          # what started this chain (skill id, "cloud"...)
+var every_tick := false   # step at the full 30 Hz instead of every third tick
 var generation := 0
 var manager: WeatherManager
 var pos := Vector2.ZERO
@@ -20,8 +21,6 @@ var life := 1.0
 var age := 0.0
 var alive := true
 var frost_gained := 0.0
-var guide_target := Vector2.INF
-var guide_time := 0.0
 var last_step_time := 0.0
 var step_dt := 0.1
 var vis := 0.0            # visual fade 0..1
@@ -62,11 +61,6 @@ func kill() -> void:
 func integrate_motion(dt: float, own: Vector2, wind_response: float, responsiveness: float) -> void:
 	var target_v := own + manager.wind_at(pos) * wind_response + ext_v
 	ext_v = Vector2.ZERO
-	if guide_target != Vector2.INF and guide_time > 0.0:
-		var to := guide_target - pos
-		if to.length() > 2.0:
-			target_v += to.normalized() * minf(to.length(), 12.0) * manager.prog.stat("guide_strength")
-		guide_time -= dt
 	vel = vel.lerp(target_v, 1.0 - exp(-dt * responsiveness))
 	pos += vel * dt
 	var lim := GameBalance.WORLD_HALF - 1.0

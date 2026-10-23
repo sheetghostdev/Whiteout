@@ -49,64 +49,64 @@ func _shot(name: String) -> void:
 	print("shot ", name)
 
 
-func _look(yaw_deg: float, pitch_deg: float) -> void:
-	var p: PlayerController = Game.player
+func _look(yaw_deg: float, pitch_deg: float, zoom: float = 1.0) -> void:
+	var p: CloudController = Game.player
 	p.yaw = deg_to_rad(yaw_deg)
 	p.pitch = deg_to_rad(pitch_deg)
-	p.rotation = Vector3(0, p.yaw, 0)
-	p.head.rotation = Vector3(p.pitch, 0, 0)
+	p.zoom = zoom
 
 
-func _cast(id: String, target: Vector3) -> String:
-	var p: PlayerController = Game.player
-	var ctx := {"origin": p.eye_position(), "aim": (target - p.eye_position()).normalized(), "target": target, "hit": true, "feet": p.global_position}
+func _cloud() -> PlayerCloud:
+	return Game.weather.cloud
+
+
+func _skill(id: String, aim: Vector2 = Vector2(0, -1)) -> String:
 	Game.weather.cooldowns[id] = 0.0
-	return Game.weather.try_cast(id, ctx)
+	return Game.weather.use_skill(id, aim)
 
 
 func _ground(x: float, z: float) -> Vector3:
 	return Vector3(x, Game.world.terrain.surface_height(x, z), z)
 
 
+func _fly(dir: Vector2, seconds: float, dash: bool = false) -> void:
+	Game.player.autopilot = true
+	var c := _cloud()
+	c.move_input = dir
+	c.dashing = dash
+	await _sleep(seconds)
+	c.move_input = Vector2.ZERO
+	c.dashing = false
+	Game.player.autopilot = false
+
+
 func _basic() -> void:
 	Game.start_new_game()
 	await _frames(20)
-	_look(0, -12)
-	await _shot("01_start")
-	print("cloud: ", _cast("snow_cloud", _ground(3, 72)))
-	await _sleep(2.5)
-	await _shot("02_cloud")
-	await _sleep(3.0)
-	await _shot("03_after_cloud")
-	# Unlock everything for an effects showcase.
-	var prog := Game.prog
-	prog.add_frost(1e7)
-	prog.add_cores(30)
-	for id in ["unlock_frost_front", "unlock_arctic_wind", "unlock_blizzard", "unlock_avalanche", "unlock_polar_vortex", "cloud_drift"]:
-		prog.purchase(id)
-	for i in 6:
-		prog.purchase("cloud_radius")
-	for i in 10:
-		prog.purchase("cast_range")
-	Game.main.hud.refresh_all()
-	print("front: ", _cast("frost_front", _ground(0, 40)))
+	_look(0, -32)
 	await _sleep(1.5)
-	await _shot("04_front")
-	print("wind: ", _cast("arctic_wind", _ground(0, 40)))
-	_cast("snow_cloud", _ground(-6, 58))
-	await _sleep(2.0)
-	await _shot("05_wind_cloud")
-	print("blizzard: ", _cast("blizzard", _ground(10, 20)))
-	await _sleep(3.0)
-	_look(0, -5)
-	await _shot("06_blizzard")
-	print("vortex: ", _cast("polar_vortex", _ground(-60, -20)))
-	await _sleep(4.0)
-	_look(-30, 2)
-	await _shot("07_vortex")
+	await _shot("01_start")
+	await _fly(Vector2(0, -1), 4.0)
+	await _sleep(1.0)
+	await _shot("02_drift")
+	# A mid-game cloud: bigger, with cloudlets and a wake.
+	var prog := Game.prog
+	prog.add_frost(60000)
+	for id in ["billow", "flurry", "breeze", "cloudlet", "squall", "more_cloudlets", "swell", "gale", "snow_wake", "heavy_snow"]:
+		for i in 5:
+			prog.purchase(id)
+	Game.main.hud.refresh_all()
+	await _sleep(1.0)
+	await _fly(Vector2(-0.6, -0.8), 5.0)
+	_look(30, -30)
+	await _sleep(1.2)
+	await _shot("03_mid_cloud")
+	print("squall: ", _skill("squall"))
+	await _sleep(0.6)
+	await _shot("04_squall")
 	Game.main.open_overlay("shop")
 	await _frames(10)
-	await _shot("08_shop")
+	await _shot("05_web")
 	Game.main.close_overlay()
 
 
@@ -126,35 +126,43 @@ func _late() -> void:
 				cov.apply_disc(x, z, 5.0, 1.0)
 	cov.update_texture()
 	ShaderLib.set_global("wo_completion", 1.0)
-	_look(0, -10)
-	await _frames(20)
+	_look(0, -25)
+	await _sleep(1.5)
 	await _shot("10_winter_meadow")
-	var p: PlayerController = Game.player
-	p.global_position = Vector3(-48, Game.world.terrain.surface_height(-48, 128) + 0.5, 128)
-	_look(-40, -12)
-	await _frames(20)
+	_cloud().pos = Vector2(-48, 128)
+	_look(-40, -20, 1.8)
+	await _sleep(1.5)
 	await _shot("11_winter_overlook")
-	p.global_position = Vector3(100, Game.world.terrain.surface_height(100, 50) + 0.5, 50)
-	_look(-150, -8)
-	await _frames(20)
+	_cloud().pos = Vector2(100, 50)
+	_look(-150, -18, 1.6)
+	await _sleep(1.5)
 	await _shot("12_winter_lake")
 
 
 func _ui() -> void:
 	Game.start_new_game()
 	await _frames(10)
-	Game.prog.add_frost(5000)
-	Game.prog.add_cores(3)
+	Game.prog.add_frost(900)
+	Game.main.hud.refresh_all()
+	await _frames(10)
+	await _shot("19_hud")
 	Game.main.open_overlay("shop")
 	await _frames(10)
-	await _shot("20_shop")
+	await _shot("20_web_start")
+	for id in ["billow", "flurry", "squall", "breeze", "ice_creep"]:
+		Game.main.web._buy(id)
+	Game.prog.add_frost(400)
+	Game.main.web._refresh()
+	Game.main.web._set_hover("dense_core")
+	await _frames(10)
+	await _shot("20b_web_grown")
 	Game.main.close_overlay()
 	Game.main.open_overlay("pause")
 	await _frames(5)
 	await _shot("21_pause")
 	Game.main.close_overlay()
-	Game.prog.purchase("cloud_radius")
-	Game.prog.purchase("cloud_radius")
+	Game.prog.add_frost(500)
+	Game.prog.purchase("ice_creep")
 	Game.prog.purchase("overview_map")
 	Game.main.open_overlay("map")
 	await _frames(10)
@@ -169,21 +177,16 @@ func _ui() -> void:
 	await _shot("24_settings")
 
 
-func _place(x: float, z: float, yaw: float, pitch: float, lift: float = 0.0) -> void:
-	var p: PlayerController = Game.player
-	p.global_position = Vector3(x, Game.world.terrain.surface_height(x, z) + lift, z)
-	p.velocity = Vector3.ZERO
-	p.flying = lift > 1.0
-	_look(yaw, pitch)
-
-
 func _fx() -> void:
 	Game.start_new_game()
 	await _frames(10)
 	var prog := Game.prog
 	prog.add_frost(1e8)
-	prog.add_cores(40)
-	TestStormInteractions.buy_everything(prog)
+	prog.world_fraction = 1.0
+	TestEconomy.buy_everything(prog)
+	prog.levels["thunderhead"] = 0
+	prog.levels["sky_giant"] = 0
+	prog.levels["towering"] = 0
 	Game.main.hud.refresh_all()
 	var cov := Game.world.coverage
 	# Lake: partially frozen, with ice creeping outward.
@@ -191,43 +194,36 @@ func _fx() -> void:
 	cov.apply_disc(120, -10, 30.0, 1.0)
 	cov.apply_disc(150, 10, 18.0, 0.6)
 	cov.update_texture()
-	_place(88, 40, -45, -12, 6.0)
-	await _sleep(1.0)
+	_cloud().pos = Vector2(95, 30)
+	_look(-45, -25, 1.3)
+	await _sleep(2.0)
 	await _shot("30_lake_partial")
-	# Blizzard seen from a distance.
-	print("bz ", _cast("blizzard", _ground(-20, 0)))
-	_place(-20, 90, 0, -6, 25.0)
-	await _sleep(4.0)
-	await _shot("31_blizzard_far")
-	# Polar vortex from high up.
-	print("pv ", _cast("polar_vortex", _ground(-60, -60)))
-	_place(-60, 60, 0, -18, 60.0)
-	await _sleep(5.0)
-	await _shot("32_vortex_far")
+	_cloud().pos = Vector2(-20, 60)
+	_look(0, -30, 1.2)
+	await _sleep(2.0)
+	print("wave ", _skill("frost_wave", Vector2(0, -1)))
+	await _sleep(1.2)
+	await _shot("31_frost_wave")
+	print("vortex ", _skill("vortex_form"))
+	await _sleep(2.5)
+	_look(0, -40, 1.4)
+	await _sleep(1.0)
+	await _shot("32_vortex")
+	await _sleep(prog.stat("vortex_time"))
 	# Avalanche on a snowy mountain slope.
 	cov.apply_disc(-40, -170, 45.0, 1.0)
 	cov.apply_disc(-40, -170, 45.0, 1.0)
 	cov.update_texture()
 	var slope := _find_release(Vector2(-40, -170))
 	print("slope ", slope)
-	_place(slope.x + 10, slope.y + 70, 10, -12, 30.0)
-	print("av ", _cast("avalanche", _ground(slope.x, slope.y)))
+	_cloud().pos = slope
+	Game.weather.cooldowns["avalanche"] = 0.0
+	print("av ", Game.weather.try_ride_avalanche(slope))
+	_look(170, -25, 1.6)
 	await _sleep(2.5)
 	await _shot("33_avalanche")
 	await _sleep(2.5)
 	await _shot("34_avalanche_later")
-	# Frost fronts and wind from behind the player.
-	_place(-120, 160, 20, -8, 0.5)
-	await _sleep(0.5)
-	print("ff ", _cast("frost_front", _ground(-130, 130)))
-	await _sleep(1.5)
-	await _shot("35_fronts")
-	print("aw ", _cast("arctic_wind", _ground(-130, 130)))
-	for k in 4:
-		Game.weather.cooldowns["snow_cloud"] = 0.0
-		_cast("snow_cloud", _ground(-125 + k * 6, 140))
-	await _sleep(2.5)
-	await _shot("36_wind_clouds")
 	Game.use_thaw_sense(Game.player.global_position)
 	await _sleep(2.0)
 	await _shot("37_thaw_sense")

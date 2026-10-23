@@ -98,7 +98,7 @@ func open() -> void:
 	_regions.add_child(UIKit.label("World  %.1f%% frozen" % (cov.world_completion() * 100.0), 20, Color.WHITE))
 	var remaining := cov.total_incomplete
 	_regions.add_child(UIKit.label("%s m² still unfrozen" % UIKit.fmt(remaining), 15, UIKit.TEXT_DIM))
-	var legend := UIKit.label("White = frozen   ·   Green = still to freeze\nTriangle = you   ·   Rings = active storms", 14, UIKit.TEXT_DIM)
+	var legend := UIKit.label("White = frozen   ·   Green = still to freeze\nTriangle = you, facing the camera   ·   Rings = your cloud and storms", 14, UIKit.TEXT_DIM)
 	_regions.add_child(legend)
 
 
@@ -126,7 +126,7 @@ func _draw_overlay() -> void:
 			var c := _w2m(Vector2(p.x, p.z))
 			_overlay.draw_arc(c, 7.0, 0, TAU, 16, Color(1.0, 0.6, 0.25, 0.95), 2.0, true)
 	if Game.player != null:
-		var pl: PlayerController = Game.player
+		var pl: CloudController = Game.player
 		var pos := _w2m(Vector2(pl.global_position.x, pl.global_position.z))
 		var f := Vector2(-sin(pl.yaw), -cos(pl.yaw))
 		var s := f.orthogonal()

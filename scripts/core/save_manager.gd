@@ -3,7 +3,7 @@ extends RefCounted
 ## Versioned JSON save files with atomic replace and a backup copy.
 ## Nothing here depends on scene node paths.
 
-const VERSION := 1
+const VERSION := 2
 const PATH := "user://whiteout_save.json"
 const TMP_PATH := "user://whiteout_save.json.tmp"
 const BAK_PATH := "user://whiteout_save.json.bak"
@@ -56,7 +56,8 @@ static func read(path: String = PATH) -> Dictionary:
 		if not FileAccess.file_exists(p):
 			continue
 		var parsed = JSON.parse_string(FileAccess.get_file_as_string(p))
-		if parsed is Dictionary and int(parsed.get("version", 0)) >= 1:
+		# Version 1 saves predate the cloud redesign and cannot be carried over.
+		if parsed is Dictionary and int(parsed.get("version", 0)) >= VERSION:
 			return migrate(parsed)
 	return {}
 

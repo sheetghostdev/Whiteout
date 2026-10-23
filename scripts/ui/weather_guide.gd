@@ -1,6 +1,6 @@
 class_name WeatherGuide
 extends Control
-## Ability reference and the collection of discovered weather combinations.
+## How to play, the skills you own and the keystones you have found.
 
 signal closed()
 
@@ -16,7 +16,7 @@ func _ready() -> void:
 	var head := HBoxContainer.new()
 	vb.add_child(head)
 	head.add_child(ProceduralIcon.make("spark", 30, UIKit.CORE))
-	var t := UIKit.title("WEATHER GUIDE", 30)
+	var t := UIKit.title("FIELD GUIDE", 30)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	head.add_child(t)
 	var sc := ScrollContainer.new()
@@ -40,28 +40,35 @@ func open() -> void:
 	for c in _list.get_children():
 		c.queue_free()
 	var prog := Game.prog
-	_list.add_child(UIKit.label("WEATHER POWERS", 15, UIKit.ACCENT))
-	for id in GameBalance.ABILITY_ORDER:
-		var a: Dictionary = GameBalance.ABILITIES[id]
-		var unlocked := prog.is_ability_unlocked(id)
-		var body := String(a["desc"]) if unlocked else "Not yet unlocked."
-		if unlocked and String(a["alt"]) != "":
-			body += "\n" + String(a["alt"])
-		_list.add_child(_entry(a["icon"] if unlocked else "lock", String(a["name"]) if unlocked else "???", body, unlocked))
-	var found := prog.discovered_combos.size()
+	_list.add_child(UIKit.label("YOU ARE THE SNOW CLOUD", 15, UIKit.ACCENT))
+	_list.add_child(_entry("cloud", "Drift and snow",
+		"WASD drifts relative to the camera, the mouse looks around and the wheel zooms. Snow falls under you all the time: " +
+		"linger to freeze ground solid, then move on. Each patch of ground pays Frost only once.", true))
+	_list.add_child(_entry("wind", "Ride a gust", "Hold Shift to fly faster. Faster means thinner snow, unless you find Tailwind.", true))
+	_list.add_child(_entry("crystal", "Grow", "Press TAB to open the upgrade web. Finishing a node reveals the nodes it connects to; keystones change how you play.", true))
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 8)
 	_list.add_child(gap)
-	_list.add_child(UIKit.label("COMBINATIONS DISCOVERED  %d / %d" % [found, WeatherInteractions.COMBOS.size()], 15, UIKit.ACCENT))
-	for id in WeatherInteractions.COMBOS:
-		var c: Dictionary = WeatherInteractions.COMBOS[id]
-		var known: bool = id in prog.discovered_combos
-		var title := "%s   ·   %s" % [c["name"], c["pair"]] if known else "???   ·   %s" % c["pair"]
-		var desc := String(c["desc"]) if known else "Try combining these weather systems."
-		_list.add_child(_entry("spark" if known else "eye", title, desc, known))
-	var tip := UIKit.label("Controls: hold Left Mouse to cast · Right Mouse for the alternate action · 1-6 or wheel to switch · Tab upgrades", 14, UIKit.TEXT_DIM)
-	tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_list.add_child(tip)
+	_list.add_child(UIKit.label("SKILLS", 15, UIKit.ACCENT))
+	for id in GameBalance.SKILL_ORDER:
+		var sk: Dictionary = GameBalance.SKILLS[id]
+		var have := prog.has(id)
+		_list.add_child(_entry(sk["icon"] if have else "lock", ("%s   ·   %s" % [sk["name"], sk["key"]]) if have else "???",
+			String(sk["desc"]) if have else "Somewhere in the upgrade web.", have))
+	var gap2 := Control.new()
+	gap2.custom_minimum_size = Vector2(0, 8)
+	_list.add_child(gap2)
+	var keys: Array = []
+	for id in GameBalance.NODES:
+		if String(GameBalance.NODES[id].get("kind", "")) == "keystone" and id != "heart":
+			keys.append(id)
+	var owned := keys.filter(func(k): return prog.has(k))
+	_list.add_child(UIKit.label("KEYSTONES FOUND  %d / %d" % [owned.size(), keys.size()], 15, UIKit.ACCENT))
+	for id in owned:
+		var n: Dictionary = GameBalance.NODES[id]
+		_list.add_child(_entry(n["icon"], n["name"], String(n["desc"]).replace("KEYSTONE: ", ""), true))
+	if owned.is_empty():
+		_list.add_child(_entry("eye", "None yet", "Keystones sit at the end of each branch of the web.", false))
 
 
 func _entry(icon: String, title: String, body: String, lit: bool) -> Control:

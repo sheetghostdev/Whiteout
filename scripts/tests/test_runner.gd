@@ -40,7 +40,7 @@ func _ready() -> void:
 	var suites := [
 		["coverage", TestCoverage.new()],
 		["economy", TestEconomy.new()],
-		["interactions", TestStormInteractions.new()],
+		["cloud", TestCloud.new()],
 		["save_load", TestSaveLoad.new()],
 		["performance", TestPerformance.new()],
 		["assets", TestNoAssets.new()],

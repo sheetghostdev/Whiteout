@@ -5,13 +5,12 @@ extends Control
 
 var _frost: Label
 var _frost_rate: Label
-var _cores: Label
-var _core_box: Control
+var _ready_pill: PanelContainer
+var _ready_label: Label
+var _goal: Label
 var _pct: Label
 var _bar: ProgressBar
 var _region: Label
-var _ability_name: Label
-var _ability_hint: Label
 var _slots: HBoxContainer
 var _slot_nodes := {}
 var _status: Label
@@ -21,7 +20,6 @@ var _banner: VBoxContainer
 var _banner_title: Label
 var _banner_sub: Label
 var _banner_t := 0.0
-var _reticle: Control
 var _hints: Label
 var _fps: Label
 var _gain_accum := 0.0
@@ -36,15 +34,13 @@ func _ready() -> void:
 	UIKit.full_rect(self)
 	_build()
 	EventBus.frost_changed.connect(_on_frost)
-	EventBus.cores_changed.connect(_on_cores)
 	EventBus.coverage_changed.connect(_on_coverage)
 	EventBus.region_changed.connect(_on_region)
-	EventBus.ability_selected.connect(func(_id): _refresh_slots())
-	EventBus.ability_unlocked.connect(func(_id): _refresh_slots())
-	EventBus.ability_failed.connect(_on_fail)
+	EventBus.skill_unlocked.connect(func(_id): _refresh_slots())
+	EventBus.upgrade_purchased.connect(func(_id, _lv): _refresh_ready())
+	EventBus.skill_failed.connect(_on_fail)
 	EventBus.notify.connect(toast)
 	EventBus.region_milestone.connect(_on_region_milestone)
-	EventBus.combo_discovered.connect(func(_id): Audio.play("combo"))
 	EventBus.save_written.connect(func(): _flash_status("Game saved", UIKit.TEXT_DIM))
 
 
@@ -66,21 +62,21 @@ func _build() -> void:
 	_frost_rate = UIKit.label("Frost", 13, UIKit.TEXT_DIM)
 	fv.add_child(_frost_rate)
 	var sep := Control.new()
-	sep.custom_minimum_size = Vector2(12, 0)
+	sep.custom_minimum_size = Vector2(14, 0)
 	hb.add_child(sep)
-	_core_box = HBoxContainer.new()
-	(_core_box as HBoxContainer).add_theme_constant_override("separation", 8)
-	hb.add_child(_core_box)
-	_core_box.add_child(ProceduralIcon.make("core", 28, UIKit.CORE))
-	var cv := VBoxContainer.new()
-	cv.add_theme_constant_override("separation", -4)
-	_core_box.add_child(cv)
-	_cores = UIKit.label("0", 26, Color.WHITE)
-	_cores.add_theme_font_override("font", UIKit.number_font())
-	cv.add_child(_cores)
-	cv.add_child(UIKit.label("Winter Cores", 13, UIKit.TEXT_DIM))
+	# "Upgrades ready" pill: the one nudge toward the web, never a wall of choices.
+	_ready_pill = PanelContainer.new()
+	_ready_pill.add_theme_stylebox_override("panel", UIKit.panel_style(Color(0.2, 0.36, 0.55, 0.85), 10, Color(0.85, 0.96, 1.0, 0.8), 8))
+	_ready_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hb.add_child(_ready_pill)
+	_ready_label = UIKit.label("", 14, Color.WHITE)
+	_ready_pill.add_child(_ready_label)
+	_ready_pill.visible = false
+	_goal = UIKit.label("", 13, UIKit.TEXT_DIM)
+	UIKit.place(_goal, 0, 0, 0, 0, 24, 96, 520, 116)
+	add_child(_goal)
 	_popups = Control.new()
-	UIKit.place(_popups, 0, 0, 0, 0, 40, 100, 40, 100)
+	UIKit.place(_popups, 0, 0, 0, 0, 40, 124, 40, 124)
 	_popups.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_popups)
 
@@ -113,28 +109,17 @@ func _build() -> void:
 	_banner.add_child(_banner_sub)
 	_banner.modulate.a = 0.0
 
-	# Reticle.
-	_reticle = Control.new()
-	UIKit.place(_reticle, 0.5, 0.5, 0.5, 0.5, 0, 0, 0, 0)
-	_reticle.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_reticle.draw.connect(_draw_reticle)
-	add_child(_reticle)
-
 	# Status line under the reticle.
 	_status = UIKit.label("", 17, UIKit.BAD, HORIZONTAL_ALIGNMENT_CENTER)
-	UIKit.place(_status, 0.5, 0.5, 0.5, 0.5, -300, 36, 300, 66)
+	UIKit.place(_status, 0.5, 1, 0.5, 1, -300, -130, 300, -100)
 	add_child(_status)
 
 	# Ability bar, bottom-centre.
 	var bottom := VBoxContainer.new()
-	UIKit.place(bottom, 0.5, 1, 0.5, 1, -400, -170, 400, -22)
+	UIKit.place(bottom, 0.5, 1, 0.5, 1, -400, -100, 400, -22)
 	bottom.alignment = BoxContainer.ALIGNMENT_END
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bottom)
-	_ability_name = UIKit.title("", 20, Color.WHITE)
-	bottom.add_child(_ability_name)
-	_ability_hint = UIKit.label("", 13, UIKit.TEXT_DIM, HORIZONTAL_ALIGNMENT_CENTER)
-	bottom.add_child(_ability_hint)
 	_slots = HBoxContainer.new()
 	_slots.alignment = BoxContainer.ALIGNMENT_CENTER
 	_slots.add_theme_constant_override("separation", 10)
@@ -144,7 +129,7 @@ func _build() -> void:
 	_toasts = VBoxContainer.new()
 	UIKit.place(_toasts, 1, 0, 1, 0, -380, 18, -20, 18)
 	_toasts.add_theme_constant_override("separation", 8)
-	for l in [_pct, _region, _ability_name, _ability_hint, _status, _banner_title, _banner_sub]:
+	for l in [_pct, _region, _goal, _status, _banner_title, _banner_sub]:
 		_outline(l)
 	_toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_toasts)
@@ -166,21 +151,19 @@ func _outline(l: Label, size: int = 5) -> void:
 func refresh_all() -> void:
 	_shown_frost = Game.prog.frost
 	_on_frost(Game.prog.frost)
-	_on_cores(Game.prog.cores)
+	_refresh_ready()
 	_on_coverage(Game.prog.world_fraction)
 	_refresh_slots()
 	_update_hints()
 
 
 func _update_hints() -> void:
-	var parts: Array[String] = ["TAB  Upgrades"]
+	var parts: Array[String] = ["WASD  Drift", "SHIFT  Gust", "TAB  Upgrades"]
 	if Game.prog.has("overview_map"):
 		parts.append("M  Map")
-	if Game.prog.has("flight"):
-		parts.append("F  Fly")
 	if Game.prog.has("thaw_sense"):
 		parts.append("Q  Thaw Sense")
-	parts.append("G  Weather Guide")
+	parts.append("G  Guide")
 	_hints.text = "     ".join(parts)
 
 
@@ -188,28 +171,36 @@ func _refresh_slots() -> void:
 	for c in _slots.get_children():
 		c.queue_free()
 	_slot_nodes.clear()
-	var unlocked := Game.prog.unlocked_abilities()
-	var sel := ""
-	if Game.player != null:
-		sel = (Game.player as PlayerController).abilities.selected_id()
-	for i in GameBalance.ABILITY_ORDER.size():
-		var id: String = GameBalance.ABILITY_ORDER[i]
-		var is_unlocked := id in unlocked
-		var next_locked := not is_unlocked and i == unlocked.size()
-		if not is_unlocked and not next_locked:
-			continue
+	for id in Game.prog.unlocked_skills():
 		var slot := AbilitySlot.new()
-		slot.ability_id = id
-		slot.locked = not is_unlocked
-		slot.key_label = str(unlocked.find(id) + 1) if is_unlocked else ""
-		slot.selected = id == sel
+		slot.skill_id = id
+		slot.key_label = _short_key(String(GameBalance.SKILLS[id]["key"]))
 		_slots.add_child(slot)
 		_slot_nodes[id] = slot
-	if sel != "":
-		var a: Dictionary = GameBalance.ABILITIES[sel]
-		_ability_name.text = String(a["name"]).to_upper()
-		_ability_hint.text = a["alt"] if String(a["alt"]) != "" else ""
 	_update_hints()
+	_refresh_ready()
+
+
+static func _short_key(k: String) -> String:
+	return {"Left Mouse": "LMB", "Right Mouse": "RMB"}.get(k, k)
+
+
+## Shows how many upgrades can be bought right now, and the next goal.
+func _refresh_ready() -> void:
+	var prog := Game.prog
+	var n := prog.affordable_count()
+	_ready_pill.visible = n > 0
+	_ready_label.text = "%d upgrade%s ready  ·  TAB" % [n, "" if n == 1 else "s"]
+	var best := ""
+	var best_cost := INF
+	for id in prog.frontier():
+		if prog.requirements_met(id) and prog.cost_of(id) < best_cost:
+			best_cost = prog.cost_of(id)
+			best = id
+	if n == 0 and best != "":
+		_goal.text = "Next: %s  ·  %s Frost" % [GameBalance.NODES[best]["name"], UIKit.fmt(best_cost)]
+	else:
+		_goal.text = ""
 
 
 func _process(delta: float) -> void:
@@ -217,9 +208,8 @@ func _process(delta: float) -> void:
 		return
 	for id in _slot_nodes:
 		var slot: AbilitySlot = _slot_nodes[id]
-		var cd := Game.prog.cooldown_for(id)
-		slot.cooldown = Game.weather.cooldown_remaining(id) / maxf(cd, 0.01)
-		slot.queue_redraw()
+		var cd := Game.prog.skill_cooldown(id)
+		slot.set_cooldown(Game.weather.cooldown_remaining(id) / maxf(cd, 0.01))
 	# Count the Frost display up smoothly.
 	var target := Game.prog.frost
 	_shown_frost = target if absf(target - _shown_frost) < 1.0 else lerpf(_shown_frost, target, 1.0 - exp(-delta * 10.0))
@@ -243,10 +233,16 @@ func _process(delta: float) -> void:
 	_fps.visible = Settings.show_fps
 	if _fps.visible:
 		_fps.text = "%d FPS" % Engine.get_frames_per_second()
-	_reticle.queue_redraw()
+	_ready_timer -= delta
+	if _ready_timer <= 0.0:
+		_ready_timer = 0.5
+		_refresh_ready()
+	if _ready_pill.visible:
+		_ready_pill.modulate.a = 0.8 + 0.2 * sin(Time.get_ticks_msec() * 0.005)
 
 
 var _last_frost := -1.0
+var _ready_timer := 0.0
 
 
 func _on_frost(v: float) -> void:
@@ -260,11 +256,6 @@ func _popup(text: String) -> void:
 	_outline(l, 4)
 	l.position = Vector2(randf_range(0, 30), 0)
 	_popups.add_child(l)
-
-
-func _on_cores(v: int) -> void:
-	_cores.text = str(v)
-	_core_box.visible = Game.prog.lifetime_cores > 0 or v > 0
 
 
 func _on_coverage(f: float) -> void:
@@ -293,10 +284,10 @@ func _flash_status(text: String, c: Color) -> void:
 	_status_t = 1.6
 
 
-func _on_region_milestone(r: int, percent: int, bonus: float, core: bool) -> void:
-	if core:
+func _on_region_milestone(r: int, percent: int, bonus: float, complete: bool) -> void:
+	if complete:
 		_banner_title.text = "%s  —  100%% FROZEN" % GameBalance.REGION_SHORT[r]
-		_banner_sub.text = "WINTER CORE EARNED   ·   +%s FROST" % UIKit.fmt(bonus)
+		_banner_sub.text = "+%s FROST" % UIKit.fmt(bonus)
 		_banner_t = 5.0
 	else:
 		toast("%s  %d%%" % [GameBalance.REGION_NAMES[r].to_upper(), percent], "Milestone bonus  +%s Frost" % UIKit.fmt(bonus), "region")
@@ -308,7 +299,7 @@ func toast(title: String, subtitle: String, kind: String) -> void:
 	match kind:
 		"core", "unlock":
 			accent = UIKit.CORE
-		"combo":
+		"milestone":
 			accent = UIKit.GOOD
 		"hint":
 			accent = Color(1.0, 0.86, 0.6)
@@ -316,7 +307,7 @@ func toast(title: String, subtitle: String, kind: String) -> void:
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 10)
 	p.add_child(hb)
-	var icon_id: String = {"core": "core", "unlock": "spark", "combo": "spark", "region": "region", "hint": "eye"}.get(kind, "snowflake")
+	var icon_id: String = {"core": "core", "unlock": "spark", "milestone": "spark", "region": "region", "hint": "eye"}.get(kind, "snowflake")
 	hb.add_child(ProceduralIcon.make(icon_id, 30, accent))
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 0)
@@ -339,16 +330,3 @@ func toast(title: String, subtitle: String, kind: String) -> void:
 	tw.tween_interval(4.5)
 	tw.tween_property(p, "modulate:a", 0.0, 0.6)
 	tw.tween_callback(p.queue_free)
-
-
-func _draw_reticle() -> void:
-	var c := Color(1, 1, 1, 0.85)
-	var valid := true
-	if Game.player != null:
-		var prev: Dictionary = (Game.player as PlayerController).abilities.last_preview
-		valid = prev.get("valid", true)
-	if not valid:
-		c = Color(1.0, 0.65, 0.6, 0.9)
-	_reticle.draw_arc(Vector2.ZERO, 7.0, 0, TAU, 24, Color(0, 0, 0, 0.25), 3.0, true)
-	_reticle.draw_arc(Vector2.ZERO, 7.0, 0, TAU, 24, c, 1.5, true)
-	_reticle.draw_circle(Vector2.ZERO, 1.6, c)

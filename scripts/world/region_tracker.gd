@@ -3,8 +3,8 @@ extends RefCounted
 ## Tracks regional and world-wide milestones. Claimed milestones are stored,
 ## so reloading a save can never pay a reward twice.
 
-signal region_milestone(region_id: int, percent: int, frost_bonus: float, core: bool)
-signal world_milestone(fraction: float, cores: int)
+signal region_milestone(region_id: int, percent: int, frost_bonus: float, complete: bool)
+signal world_milestone(fraction: float)
 
 var claimed: Array = []   # per region: Array of claimed percents
 
@@ -38,18 +38,14 @@ func check(cov: SnowCoverage, prog: Progression) -> void:
 			claimed[r].append(p)
 			var bonus := region_bonus(cov, r, p) * prog.stat("region_bonus")
 			prog.add_frost(bonus)
-			var core := p == 100
-			if core:
-				prog.add_cores(1)
-			region_milestone.emit(r, p, bonus, core)
+			region_milestone.emit(r, p, bonus, p == 100)
 	var wf := cov.world_completion()
-	for k in GameBalance.WORLD_CORE_MILESTONES.size():
+	for k in GameBalance.WORLD_MILESTONES.size():
 		if k in prog.claimed_world_milestones:
 			continue
-		if wf >= GameBalance.WORLD_CORE_MILESTONES[k]:
+		if wf >= GameBalance.WORLD_MILESTONES[k]:
 			prog.claimed_world_milestones.append(k)
-			prog.add_cores(1)
-			world_milestone.emit(GameBalance.WORLD_CORE_MILESTONES[k], 1)
+			world_milestone.emit(GameBalance.WORLD_MILESTONES[k])
 
 
 static func region_bonus(cov: SnowCoverage, r: int, percent: int) -> float:

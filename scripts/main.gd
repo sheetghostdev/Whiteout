@@ -4,10 +4,10 @@ extends Node
 
 var world: WorldBuilder
 var weather: WeatherManager
-var player: PlayerController
+var player: CloudController
 var ui: CanvasLayer
 var hud: HUD
-var shop: UpgradeShop
+var web: UpgradeWeb
 var pause_menu: PauseMenu
 var settings_menu: SettingsMenu
 var guide: WeatherGuide
@@ -48,12 +48,11 @@ func _ready() -> void:
 	add_child(weather)
 	Game.weather = weather
 	weather.setup(world.terrain, world.coverage, Game.prog, true, Game.seed_value)
-	player = PlayerController.new()
+	player = CloudController.new()
 	player.name = "Player"
 	add_child(player)
-	player.setup(world.terrain)
+	player.setup(world.terrain, weather)
 	Game.player = player
-	player.spawn_at(TerrainData.SPAWN, 0.0)
 	menu_cam = Camera3D.new()
 	menu_cam.far = 3200.0
 	menu_cam.fov = 60.0
@@ -72,7 +71,8 @@ func _ready() -> void:
 	EventBus.thaw_sense_pulse.connect(_on_thaw)
 	EventBus.settings_changed.connect(_on_settings)
 	EventBus.upgrade_purchased.connect(func(_id, _lv): hud.refresh_all())
-	EventBus.cores_changed.connect(_on_cores_tutorial)
+	EventBus.skill_failed.connect(_on_skill_failed)
+	EventBus.skill_used.connect(_on_skill_used)
 	_on_settings()
 	var tw := create_tween()
 	tw.tween_property(loading, "modulate:a", 0.0, 0.8)
@@ -86,10 +86,10 @@ func _build_ui() -> void:
 	hud = HUD.new()
 	ui.add_child(hud)
 	hud.visible = false
-	shop = UpgradeShop.new()
-	ui.add_child(shop)
-	shop.visible = false
-	shop.closed.connect(close_overlay)
+	web = UpgradeWeb.new()
+	ui.add_child(web)
+	web.visible = false
+	web.closed.connect(close_overlay)
 	map_ui = OverviewMap.new()
 	ui.add_child(map_ui)
 	map_ui.visible = false
@@ -164,7 +164,6 @@ func show_main_menu() -> void:
 		weather.clear_all()
 	Game.set_state("menu")
 	player.input_enabled = false
-	player.targeting.hide_all()
 	hud.visible = false
 	main_menu.visible = true
 	main_menu.refresh()
@@ -182,23 +181,22 @@ func begin_play(is_new: bool) -> void:
 		cinematic.queue_free()
 		cinematic = null
 	letterbox.visible = false
+	player.spawn_at(TerrainData.SPAWN, 0.0)
 	if is_new:
-		player.spawn_at(TerrainData.SPAWN, 0.0)
 		world.coverage.update_texture()
 		ShaderLib.set_global("wo_completion", 0.0)
 		_tut_timer = 0.0
 	player.camera.current = true
 	player.input_enabled = true
-	player.abilities.selected = "snow_cloud"
 	hud.visible = true
 	hud.refresh_all()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if is_new:
-		EventBus.notify.emit("WELCOME TO WHITEOUT", "Aim at the grass and hold Left Mouse to summon a snow cloud.", "info")
+		EventBus.notify.emit("YOU ARE THE SNOW CLOUD", "Drift with WASD and look with the mouse. Snow falls wherever you go.", "info")
 
 
 func _hide_overlays() -> void:
-	for c in [shop, pause_menu, settings_menu, guide, map_ui, completion]:
+	for c in [web, pause_menu, settings_menu, guide, map_ui, completion]:
 		c.visible = false
 
 
@@ -208,7 +206,8 @@ func open_overlay(which: String) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	match which:
 		"shop":
-			shop.open()
+			hud.visible = false
+			web.open()
 			Audio.play("click", -6.0, 0.8)
 		"map":
 			map_ui.open()
@@ -226,6 +225,7 @@ func close_overlay() -> void:
 	if Game.state == "playing" or Game.state == "completed":
 		player.input_enabled = true
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		hud.visible = true
 		hud.refresh_all()
 
 
@@ -265,10 +265,8 @@ func play_completion() -> void:
 	_hide_overlays()
 	overlay = "completion"
 	player.input_enabled = false
-	player.targeting.hide_all()
 	hud.visible = false
 	for e in weather.effects:
-		e.life = minf(e.life, e.age + 2.5)
 		if e is FrostFront or e is Avalanche or e is FrostPulse:
 			e.kill()
 	Audio.play("complete")
@@ -314,7 +312,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			if Game.prog.has("overview_map"):
 				open_overlay("map")
 			else:
-				EventBus.ability_failed.emit("map", "Buy the Overview Map in the General upgrades")
+				EventBus.skill_failed.emit("map", "Find the Overview Map in the upgrade web (TAB)")
 		elif event.is_action_pressed("guide"):
 			_open_guide("game")
 		elif event is InputEventMouseButton and event.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
@@ -347,8 +345,11 @@ func _process(delta: float) -> void:
 		var presence := weather.storm_presence(Vector2(cp.x, cp.z))
 		world.atmosphere.set_storm_darkness(presence * 0.8, delta)
 		Audio.storm_level = presence
-		Audio.wind_level = clampf(weather.wind_at(Vector2(cp.x, cp.z)).length() / 15.0, 0.0, 1.0)
-		ShaderLib.set_global("wo_wind", weather.wind_at(Vector2(cp.x, cp.z)))
+		var w := weather.wind_at(Vector2(cp.x, cp.z))
+		if weather.cloud != null:
+			w += weather.cloud.vel * 0.25
+		Audio.wind_level = clampf(w.length() / 6.0, 0.0, 1.0)
+		ShaderLib.set_global("wo_wind", w)
 	_update_tutorial(delta)
 
 
@@ -360,21 +361,23 @@ func _update_tutorial(delta: float) -> void:
 	_tut_timer += delta
 	if not "shop" in tut and Game.prog.frost >= 10.0:
 		tut.append("shop")
-		EventBus.notify.emit("FROST EARNED", "Freshly frozen ground earns Frost. Press TAB to spend it on upgrades.", "info")
-	if not "move" in tut and _tut_timer > 70.0:
+		EventBus.notify.emit("FROST EARNED", "Freshly frozen ground earns Frost. Press TAB to grow your cloud.", "info")
+	if not "move" in tut and _tut_timer > 45.0:
 		tut.append("move")
-		EventBus.notify.emit("TIP", "Snow only pays once per patch of ground - keep moving to fresh green grass.", "info")
+		EventBus.notify.emit("TIP", "Ground only pays once - drift on to fresh green grass. Linger a moment to freeze it solid.", "info")
 	st["tut"] = tut
 
 
-func _on_cores_tutorial(n: int) -> void:
-	if n <= 0 or Game.state != "playing":
+func _on_skill_used(id: String, at: Vector3) -> void:
+	var snd: String = {"squall": "pulse", "frost_wave": "cast_front", "vortex_form": "cast_vortex",
+		"avalanche": "cast_avalanche"}.get(id, "cast_cloud")
+	Audio.play(snd, -3.0)
+
+
+func _on_skill_failed(id: String, _reason: String) -> void:
+	if id == "map":
 		return
-	var tut: Array = Game.prog.stats.get("tut", [])
-	if not "core" in tut:
-		tut.append("core")
-		Game.prog.stats["tut"] = tut
-		EventBus.notify.emit("WINTER CORE", "Winter Cores unlock new weather powers. Look in the upgrade menu (TAB).", "core")
+	Audio.play("error", -10.0)
 
 
 func _on_thaw(origin: Vector3) -> void:

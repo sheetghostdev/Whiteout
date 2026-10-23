@@ -1,7 +1,7 @@
 class_name FrostFront
 extends WeatherEffect
-## A low wave of freezing air that rolls across the terrain surface,
-## depositing a fixed amount of snow on every cell it sweeps.
+## Frost Wave: a low wave of freezing air that rolls across the terrain
+## surface, depositing a fixed amount of snow on every cell it sweeps.
 
 var dir := Vector2(0, -1)
 var width := 4.0
@@ -12,7 +12,6 @@ var strength := 0.45
 var rebounds := 0
 var branch_chance := 0.0
 var splinter := false
-var highway := false
 var glide := 0.15
 var traveled := 0.0
 
@@ -22,18 +21,17 @@ var _spray: GPUParticles3D
 var _rot := 0.0
 
 
-func init_from_stats(prog: Progression) -> void:
+func configure(p_width: float, p_length: float, p_splinter: bool) -> void:
 	kind = "frost_front"
-	width = prog.stat("front_width")
-	speed = prog.stat("front_speed")
-	total = prog.stat("front_distance") * prog.stat("duration_mult")
+	width = p_width
+	speed = 20.0
+	total = p_length
 	remaining = total
-	strength = prog.stat("front_strength") * prog.stat("efficiency_mult")
-	rebounds = int(prog.stat("front_rebound"))
-	branch_chance = prog.stat("front_branch")
-	splinter = prog.has("splintering_frost")
-	highway = prog.has("frozen_highway")
-	glide = prog.stat("front_snowfield")
+	strength = 0.4
+	rebounds = 0
+	branch_chance = 0.0
+	splinter = p_splinter
+	glide = 0.15
 	life = 999.0
 	radius = width * 0.5
 
@@ -61,21 +59,11 @@ func sim_step(dt: float) -> void:
 	var cov := manager.cov
 	var terrain := manager.terrain
 	age += dt
-	var w := manager.wind_at(pos)
-	var wd := w.dot(dir)
 	var boost := 1.0
 	var consume := 1.0
-	if wd > 1.0:
-		# Frost Front + Arctic Wind: faster and farther.
-		boost += wd * 0.06
-		consume /= 1.0 + wd * 0.05
-		manager.discover("gale_front", pos)
-	var c := cov.get_coverage(pos.x, pos.y)
-	if c >= 0.95:
+	# Waves glide faster over ground that is already white.
+	if cov.get_coverage(pos.x, pos.y) >= 0.95:
 		boost *= 1.0 + glide
-		if highway:
-			boost *= 1.8
-			consume *= 0.35
 	var step := speed * boost * dt
 	var ahead := pos + dir * 3.0
 	var out := not terrain.in_bounds(ahead.x, ahead.y, 5.0)
@@ -109,13 +97,11 @@ func _spawn_child(d: Vector2, w: float, dist: float) -> void:
 	if not manager.can_spawn("frost_front"):
 		return
 	var f := FrostFront.new()
-	f.init_from_stats(manager.prog)
+	f.configure(w, dist, false)
 	f.dir = d.normalized()
 	f.width = maxf(w, 2.0)
 	f.radius = f.width * 0.5
-	f.total = dist
-	f.remaining = dist
-	f.rebounds = 0
+	f.splinter = splinter
 	f.generation = generation + 1
 	f.pos = pos
 	manager.spawn(f, root_id)

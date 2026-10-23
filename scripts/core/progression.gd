@@ -1,142 +1,156 @@
 class_name Progression
 extends RefCounted
-## Owns currency, purchased upgrades, ability unlocks and run statistics.
+## Owns Frost, the upgrade web state and run statistics.
 ## Pure data + rules: no scene access, so the balancing harness can drive it.
 
 signal frost_changed(amount: float)
-signal cores_changed(amount: int)
-signal purchased(upgrade_id: String, level: int)
-signal ability_unlocked(ability_id: String)
+signal purchased(node_id: String, level: int)
+signal skill_unlocked(skill_id: String)
 
 var frost: float = 0.0
 var lifetime_frost: float = 0.0
-var cores: int = 0
-var lifetime_cores: int = 0
-var levels: Dictionary = {}          # upgrade_id -> level
-var world_fraction: float = 0.0      # mirrored from SnowCoverage for requirement checks
-var claimed_world_milestones: Array = []   # indices into WORLD_CORE_MILESTONES
-var discovered_combos: Array = []
+var levels: Dictionary = {"heart": 1}   # node_id -> level
+var world_fraction: float = 0.0        # mirrored from SnowCoverage for requirement checks
+var claimed_world_milestones: Array = []
 var completed: bool = false
-var plus_level: int = 0              # New Winter+ count
-var modifiers: Array = []            # New Winter+ modifier ids
+var plus_level: int = 0                # New Winter+ count
+var modifiers: Array = []              # New Winter+ modifier ids
 var stats: Dictionary = {
 	"time": 0.0,
-	"storms": 0,
+	"skills_used": 0,
 	"casts": {},
 	"largest_storm": 0.0,
 	"longest_chain": 0,
 	"area_frozen": 0.0,
+	"distance": 0.0,
 }
 
 
-func level(upgrade_id: String) -> int:
-	return int(levels.get(upgrade_id, 0))
+func level(node_id: String) -> int:
+	return int(levels.get(node_id, 0))
 
 
-func has(upgrade_id: String) -> bool:
-	return level(upgrade_id) > 0
+func has(node_id: String) -> bool:
+	return level(node_id) > 0
 
 
 func stat(stat_id: String) -> float:
-	# Stats are driven by the upgrade of the same id; modifiers add on top.
-	var v := GameBalance.stat_value(stat_id, level(stat_id))
-	if stat_id == "cloud_count" and "extra_cloud" in modifiers:
+	var s: Dictionary = GameBalance.STATS[stat_id]
+	var v := float(s["base"])
+	for id in GameBalance.stat_nodes(stat_id):
+		var lv := level(id)
+		if lv <= 0:
+			continue
+		var per := float(GameBalance.NODES[id]["per"])
+		if s["mode"] == "mul":
+			v *= pow(per, lv)
+		else:
+			v += per * lv
+	return _modified(stat_id, v)
+
+
+## The stat value if `node_id` had one more level (for "current -> next" text).
+func stat_with_next(stat_id: String, node_id: String) -> float:
+	levels[node_id] = level(node_id) + 1
+	var v := stat(stat_id)
+	levels[node_id] = level(node_id) - 1
+	if levels[node_id] == 0:
+		levels.erase(node_id)
+	return v
+
+
+func _modified(stat_id: String, v: float) -> float:
+	if stat_id == "companions" and "extra_cloud" in modifiers:
 		v += 1.0
-	if stat_id == "wind_strength" and "strong_wind" in modifiers:
-		v *= 1.25
-	if stat_id == "front_speed" and "swift_fronts" in modifiers:
+	if stat_id == "speed" and "strong_wind" in modifiers:
+		v *= 1.2
+	if stat_id == "wave_length" and "swift_fronts" in modifiers:
 		v *= 1.3
 	return v
 
 
-func is_ability_unlocked(ability_id: String) -> bool:
-	var unlock: String = GameBalance.ABILITIES[ability_id]["unlock"]
-	return unlock == "" or has(unlock)
+func cost_of(node_id: String) -> float:
+	return GameBalance.node_cost(node_id, level(node_id))
 
 
-func unlocked_abilities() -> Array[String]:
+func is_maxed(node_id: String) -> bool:
+	return level(node_id) >= int(GameBalance.NODES[node_id]["max"])
+
+
+## Revealed nodes are drawn in the web; everything else stays hidden. A node
+## appears once a node linked to it is fully levelled, so only a handful of
+## choices are ever open and each one is finished before the next opens.
+func is_revealed(node_id: String) -> bool:
+	if has(node_id):
+		return true
+	var n: Dictionary = GameBalance.NODES[node_id]
+	if n.has("coverage") and world_fraction < float(n["coverage"]) - 0.2:
+		return false
+	for l in n["links"]:
+		if is_maxed(l):
+			return true
+	return (n["links"] as Array).is_empty()
+
+
+## "" when the node can be bought (Frost aside), otherwise why not.
+func requirement_text(node_id: String) -> String:
+	if not is_revealed(node_id):
+		return "Hidden"
+	var n: Dictionary = GameBalance.NODES[node_id]
+	if n.has("coverage") and world_fraction < float(n["coverage"]):
+		return "Freeze %d%% of the world" % int(round(float(n["coverage"]) * 100.0))
+	return ""
+
+
+func requirements_met(node_id: String) -> bool:
+	return requirement_text(node_id) == ""
+
+
+func can_purchase(node_id: String) -> bool:
+	if is_maxed(node_id) or not requirements_met(node_id):
+		return false
+	return frost >= cost_of(node_id)
+
+
+func purchase(node_id: String) -> bool:
+	if not can_purchase(node_id):
+		return false
+	frost -= cost_of(node_id)
+	levels[node_id] = level(node_id) + 1
+	frost_changed.emit(frost)
+	purchased.emit(node_id, level(node_id))
+	if GameBalance.SKILLS.has(node_id):
+		skill_unlocked.emit(node_id)
+	return true
+
+
+## Nodes on the frontier: revealed and not yet maxed.
+func frontier() -> Array[String]:
 	var out: Array[String] = []
-	for a in GameBalance.ABILITY_ORDER:
-		if is_ability_unlocked(a):
-			out.append(a)
+	for id in GameBalance.NODES:
+		if is_revealed(id) and not is_maxed(id):
+			out.append(id)
 	return out
 
 
-func cost_of(upgrade_id: String) -> float:
-	return GameBalance.upgrade_cost(upgrade_id, level(upgrade_id))
+func affordable_count() -> int:
+	var n := 0
+	for id in frontier():
+		if can_purchase(id):
+			n += 1
+	return n
 
 
-func core_cost_of(upgrade_id: String) -> int:
-	return GameBalance.upgrade_core_cost(upgrade_id)
+func unlocked_skills() -> Array[String]:
+	var out: Array[String] = []
+	for s in GameBalance.SKILL_ORDER:
+		if has(s):
+			out.append(s)
+	return out
 
 
-func is_maxed(upgrade_id: String) -> bool:
-	return level(upgrade_id) >= int(GameBalance.UPGRADES[upgrade_id]["max"])
-
-
-## Returns "" when requirements are met, otherwise a human readable reason.
-func requirement_text(upgrade_id: String) -> String:
-	var u: Dictionary = GameBalance.UPGRADES[upgrade_id]
-	var req: Dictionary = u.get("req", {})
-	var parts: Array[String] = []
-	if req.has("ability") and not is_ability_unlocked(req["ability"]):
-		parts.append("Unlock %s" % GameBalance.ABILITIES[req["ability"]]["name"])
-	var ups: Dictionary = req.get("upgrades", {})
-	for k in ups:
-		if level(k) < int(ups[k]):
-			var nm: String = GameBalance.UPGRADES[k]["name"]
-			if int(GameBalance.UPGRADES[k]["max"]) == 1:
-				parts.append("Requires %s" % nm)
-			else:
-				parts.append("%s level %d" % [nm, int(ups[k])])
-	if req.has("coverage") and world_fraction < float(req["coverage"]):
-		parts.append("World %d%% frozen" % int(round(float(req["coverage"]) * 100.0)))
-	return ", ".join(parts)
-
-
-func requirements_met(upgrade_id: String) -> bool:
-	return requirement_text(upgrade_id) == ""
-
-
-## True when the upgrade's requirements are almost satisfied - used to decide
-## whether the shop shows a locked entry or hides it entirely.
-func is_forthcoming(upgrade_id: String) -> bool:
-	var u: Dictionary = GameBalance.UPGRADES[upgrade_id]
-	var req: Dictionary = u.get("req", {})
-	if req.has("ability") and not is_ability_unlocked(req["ability"]):
-		return false
-	var ups: Dictionary = req.get("upgrades", {})
-	for k in ups:
-		var need := int(ups[k])
-		if level(k) == 0 and need > 0 and GameBalance.UPGRADES[k].has("req") and not requirements_met(k):
-			return false
-	if req.has("coverage") and world_fraction < float(req["coverage"]) - 0.25:
-		return false
-	return true
-
-
-func can_purchase(upgrade_id: String) -> bool:
-	if is_maxed(upgrade_id) or not requirements_met(upgrade_id):
-		return false
-	return frost >= cost_of(upgrade_id) and cores >= core_cost_of(upgrade_id)
-
-
-func purchase(upgrade_id: String) -> bool:
-	if not can_purchase(upgrade_id):
-		return false
-	var cost := cost_of(upgrade_id)
-	var ccost := core_cost_of(upgrade_id)
-	frost -= cost
-	cores -= ccost
-	levels[upgrade_id] = level(upgrade_id) + 1
-	frost_changed.emit(frost)
-	if ccost > 0:
-		cores_changed.emit(cores)
-	purchased.emit(upgrade_id, level(upgrade_id))
-	var u: Dictionary = GameBalance.UPGRADES[upgrade_id]
-	if u.has("unlocks"):
-		ability_unlocked.emit(u["unlocks"])
-	return true
+func skill_cooldown(skill_id: String) -> float:
+	return stat(GameBalance.SKILLS[skill_id]["cd_stat"])
 
 
 func add_frost(amount: float) -> void:
@@ -147,19 +161,13 @@ func add_frost(amount: float) -> void:
 	frost_changed.emit(frost)
 
 
-func add_cores(n: int) -> void:
-	cores += n
-	lifetime_cores += n
-	cores_changed.emit(cores)
-
-
-func record_cast(ability_id: String) -> void:
+func record_cast(skill_id: String) -> void:
 	var casts: Dictionary = stats["casts"]
-	casts[ability_id] = int(casts.get(ability_id, 0)) + 1
-	stats["storms"] = int(stats["storms"]) + 1
+	casts[skill_id] = int(casts.get(skill_id, 0)) + 1
+	stats["skills_used"] = int(stats.get("skills_used", 0)) + 1
 
 
-func most_used_ability() -> String:
+func most_used_skill() -> String:
 	var best := ""
 	var best_n := -1
 	var casts: Dictionary = stats["casts"]
@@ -170,19 +178,18 @@ func most_used_ability() -> String:
 	return best
 
 
-func cooldown_for(ability_id: String) -> float:
-	return float(GameBalance.ABILITIES[ability_id]["cooldown"]) * stat("cooldown_mult")
-
-
-func cast_range_for(ability_id: String) -> float:
-	return stat("cast_range") * float(GameBalance.ABILITIES[ability_id]["range_mult"])
+func upgrades_owned() -> int:
+	var n := 0
+	for id in levels:
+		if id != "heart":
+			n += int(levels[id])
+	return n
 
 
 func to_dict() -> Dictionary:
 	return {
-		"frost": frost, "lifetime_frost": lifetime_frost, "cores": cores, "lifetime_cores": lifetime_cores,
-		"levels": levels.duplicate(), "claimed_world_milestones": claimed_world_milestones.duplicate(),
-		"discovered_combos": discovered_combos.duplicate(), "completed": completed,
+		"frost": frost, "lifetime_frost": lifetime_frost, "levels": levels.duplicate(),
+		"claimed_world_milestones": claimed_world_milestones.duplicate(), "completed": completed,
 		"plus_level": plus_level, "modifiers": modifiers.duplicate(), "stats": stats.duplicate(true),
 	}
 
@@ -190,19 +197,14 @@ func to_dict() -> Dictionary:
 func from_dict(d: Dictionary) -> void:
 	frost = float(d.get("frost", 0.0))
 	lifetime_frost = float(d.get("lifetime_frost", 0.0))
-	cores = int(d.get("cores", 0))
-	lifetime_cores = int(d.get("lifetime_cores", 0))
-	levels = {}
+	levels = {"heart": 1}
 	var lv: Dictionary = d.get("levels", {})
 	for k in lv:
-		if GameBalance.UPGRADES.has(k):
-			levels[k] = int(lv[k])
+		if GameBalance.NODES.has(k):
+			levels[k] = mini(int(lv[k]), int(GameBalance.NODES[k]["max"]))
 	claimed_world_milestones = []
 	for v in d.get("claimed_world_milestones", []):
 		claimed_world_milestones.append(int(v))
-	discovered_combos = []
-	for v in d.get("discovered_combos", []):
-		discovered_combos.append(String(v))
 	completed = bool(d.get("completed", false))
 	plus_level = int(d.get("plus_level", 0))
 	modifiers = []
@@ -214,4 +216,3 @@ func from_dict(d: Dictionary) -> void:
 	if typeof(stats.get("casts")) != TYPE_DICTIONARY:
 		stats["casts"] = {}
 	frost_changed.emit(frost)
-	cores_changed.emit(cores)

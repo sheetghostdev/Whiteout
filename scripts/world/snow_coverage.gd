@@ -232,7 +232,10 @@ func _mark_chunk(ch: int) -> void:
 
 ## Soft-edged disc. `amount` is coverage added at the centre for this call.
 ## stride/phase let very large storms update interleaved rows each tick.
-func apply_disc(cx: float, cz: float, r: float, amount: float, stride: int = 1, phase: int = 0) -> float:
+## `core` is the fraction of the disc's area that receives full strength; cells
+## reaching `snap` jump straight to fully frozen.
+func apply_disc(cx: float, cz: float, r: float, amount: float, stride: int = 1, phase: int = 0,
+		core: float = 0.4, snap: float = FULL_SNAP) -> float:
 	last_cov_delta = 0.0
 	last_new_full = 0
 	if amount <= 0.0 or r <= 0.0:
@@ -247,7 +250,7 @@ func apply_disc(cx: float, cz: float, r: float, amount: float, stride: int = 1, 
 	if x0 > x1 or z0 > z1:
 		return 0.0
 	var r2 := r * r
-	var inner2 := r2 * 0.40
+	var inner2 := r2 * clampf(core, 0.0, 0.95)
 	var fall := r2 - inner2
 	var gain := 0.0
 	var dsum := 0.0
@@ -284,7 +287,7 @@ func apply_disc(cx: float, cz: float, r: float, amount: float, stride: int = 1, 
 					if d2 > inner2:
 						w = (r2 - d2) / fall
 					var nc := c + amt * w * exposure[i]
-					if nc >= FULL_SNAP:
+					if nc >= snap:
 						nc = 1.0
 						done += 1
 					cov[i] = nc

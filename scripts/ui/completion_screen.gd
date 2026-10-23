@@ -7,10 +7,9 @@ signal new_winter_plus(modifiers: Array)
 signal to_main_menu()
 
 const MODIFIERS := [
-	["extra_cloud", "Extra Cloud", "Start with one additional snow cloud."],
-	["strong_wind", "Strong Winds", "Arctic Wind is 25% stronger."],
-	["west_wind", "West Wind", "The prevailing wind blows from the west."],
-	["swift_fronts", "Swift Fronts", "Frost Fronts travel 30% faster."],
+	["extra_cloud", "Little Friend", "A cloudlet follows you from the very start."],
+	["strong_wind", "Strong Winds", "You drift 20% faster."],
+	["swift_fronts", "Long Waves", "Frost Waves reach 30% farther."],
 	["frost_head_start", "Head Start", "Begin the run with a gift of Frost."],
 ]
 
@@ -78,18 +77,22 @@ func open() -> void:
 		c.queue_free()
 	var p := Game.prog
 	var st := p.stats
-	var most := p.most_used_ability()
+	var most := p.most_used_skill()
+	var most_name := "-"
+	if GameBalance.SKILLS.has(most):
+		most_name = GameBalance.SKILLS[most]["name"]
+	elif most == "avalanche":
+		most_name = "Avalanche Rider"
 	var rows := [
 		["Total time", UIKit.fmt_time(float(st.get("time", 0.0)))],
 		["Area frozen", "%s m²" % UIKit.fmt(float(SnowCoverage.N * SnowCoverage.N))],
 		["Frost earned", UIKit.fmt(p.lifetime_frost)],
-		["Storms summoned", UIKit.fmt(float(st.get("storms", 0)))],
-		["Largest storm", "%d m radius" % int(float(st.get("largest_storm", 0.0)))],
-		["Longest frost chain", "%d linked effects" % int(st.get("longest_chain", 0))],
-		["Most-used ability", GameBalance.ABILITIES[most]["name"] if most != "" else "-"],
+		["Distance drifted", "%s km" % ("%.1f" % (float(st.get("distance", 0.0)) / 1000.0))],
+		["Largest you grew", "%d m across" % int(float(st.get("largest_storm", 0.0)) * 2.0)],
+		["Skills used", UIKit.fmt(float(st.get("skills_used", 0)))],
+		["Favourite skill", most_name],
+		["Upgrades bought", "%d" % p.upgrades_owned()],
 		["Regions completed", "%d / %d" % [SnowCoverage.REGION_COUNT, SnowCoverage.REGION_COUNT]],
-		["Weather combinations", "%d / %d" % [p.discovered_combos.size(), WeatherInteractions.COMBOS.size()]],
-		["Winter Cores earned", str(p.lifetime_cores)],
 	]
 	for r in rows:
 		var hb := HBoxContainer.new()

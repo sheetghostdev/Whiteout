@@ -14,7 +14,7 @@ var regions: RegionTracker
 var main: Node
 var world: WorldBuilder
 var weather: WeatherManager
-var player: Node3D
+var player: CloudController
 var seed_value := DEFAULT_SEED
 var save_path := SaveManager.PATH
 var state := "boot"   # boot, menu, playing, cinematic, completed
@@ -36,9 +36,8 @@ func _ready() -> void:
 func _new_progression() -> void:
 	prog = Progression.new()
 	prog.frost_changed.connect(func(v): EventBus.frost_changed.emit(v))
-	prog.cores_changed.connect(func(v): EventBus.cores_changed.emit(v))
 	prog.purchased.connect(func(id, lv): EventBus.upgrade_purchased.emit(id, lv))
-	prog.ability_unlocked.connect(_on_ability_unlocked)
+	prog.skill_unlocked.connect(_on_skill_unlocked)
 	regions = RegionTracker.new()
 	regions.region_milestone.connect(_on_region_milestone)
 	regions.world_milestone.connect(_on_world_milestone)
@@ -69,7 +68,6 @@ func start_new_game(modifiers: Array = [], plus_level: int = 0) -> void:
 	main.begin_play(true)
 	set_state("playing")
 	EventBus.frost_changed.emit(prog.frost)
-	EventBus.cores_changed.emit(prog.cores)
 	EventBus.coverage_changed.emit(0.0)
 
 
@@ -85,15 +83,14 @@ func continue_game() -> bool:
 	prog.world_fraction = world.coverage.world_completion()
 	weather.clear_all()
 	weather.setup(world.terrain, world.coverage, prog, true, seed_value)
-	weather.from_array(d.get("weather", []))
 	current_region = -1
 	_autosave_timer = 0.0
 	main.begin_play(false)
+	weather.from_array(d.get("weather", []))
 	if player != null and player.has_method("restore_state"):
 		player.restore_state(d.get("player", {}))
 	set_state("playing")
 	EventBus.frost_changed.emit(prog.frost)
-	EventBus.cores_changed.emit(prog.cores)
 	EventBus.coverage_changed.emit(prog.world_fraction)
 	return true
 
@@ -228,23 +225,32 @@ func _update_thaw(delta: float) -> void:
 
 
 # --------------------------------------------------------------- signals
-func _on_ability_unlocked(id: String) -> void:
-	EventBus.ability_unlocked.emit(id)
-	EventBus.notify.emit("NEW WEATHER POWER", GameBalance.ABILITIES[id]["name"].to_upper(), "unlock")
+func _on_skill_unlocked(id: String) -> void:
+	EventBus.skill_unlocked.emit(id)
+	var sk: Dictionary = GameBalance.SKILLS[id]
+	EventBus.notify.emit("NEW SKILL: " + String(sk["name"]).to_upper(), "Press %s. %s" % [sk["key"], sk["desc"]], "unlock")
 	Audio.play("core")
 	save_game()
 
 
-func _on_region_milestone(r: int, percent: int, bonus: float, core: bool) -> void:
-	EventBus.region_milestone.emit(r, percent, bonus, core)
-	if core:
+func _on_region_milestone(r: int, percent: int, bonus: float, complete: bool) -> void:
+	EventBus.region_milestone.emit(r, percent, bonus, complete)
+	if complete:
 		Audio.play("milestone")
 		save_game()
 	else:
 		Audio.play("purchase", -4.0, 0.8)
 
 
-func _on_world_milestone(fraction: float, n: int) -> void:
-	EventBus.world_milestone.emit(fraction, n)
-	EventBus.notify.emit("WINTER CORE EARNED", "The world is %d%% frozen" % int(round(fraction * 100.0)), "core")
+func _on_world_milestone(fraction: float) -> void:
+	EventBus.world_milestone.emit(fraction)
+	var newly := []
+	for id in GameBalance.NODES:
+		var n: Dictionary = GameBalance.NODES[id]
+		if n.has("coverage") and absf(float(n["coverage"]) - fraction) < 0.001:
+			newly.append(n["name"])
+	var sub := "The world is %d%% frozen." % int(round(fraction * 100.0))
+	if not newly.is_empty():
+		sub += " Now within reach: " + ", ".join(newly)
+	EventBus.notify.emit("WINTER SPREADS", sub, "milestone")
 	Audio.play("core")
