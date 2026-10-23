@@ -10,7 +10,7 @@ const CAST_SOUNDS := {
 }
 
 var player: PlayerController
-var selected := 0
+var selected := "snow_cloud"
 var last_ctx := {}
 var last_preview := {}
 
@@ -24,38 +24,37 @@ func unlocked() -> Array[String]:
 
 
 func selected_id() -> String:
-	var list := unlocked()
-	if list.is_empty():
-		return "snow_cloud"
-	return list[clampi(selected, 0, list.size() - 1)]
+	if Game.prog.is_ability_unlocked(selected):
+		return selected
+	return "snow_cloud"
 
 
 func select_id(id: String) -> void:
-	var list := unlocked()
-	var i := list.find(id)
-	if i >= 0:
-		selected = i
+	if Game.prog.is_ability_unlocked(id):
+		selected = id
 		EventBus.ability_selected.emit(id)
 
 
+## Number keys address the unlocked abilities in bar order.
 func select_index(i: int) -> void:
 	var list := unlocked()
 	if i < 0 or i >= list.size():
 		Audio.play("error", -10.0)
 		return
-	if selected != i:
-		selected = i
+	if selected != list[i]:
+		selected = list[i]
 		Audio.play("hover", -2.0, 1.2)
 	EventBus.ability_selected.emit(list[i])
 
 
 func cycle(d: int) -> void:
-	var n := unlocked().size()
-	if n <= 1:
+	var list := unlocked()
+	if list.size() <= 1:
 		return
-	selected = posmod(selected + d, n)
+	var i := maxi(list.find(selected_id()), 0)
+	selected = list[posmod(i + d, list.size())]
 	Audio.play("hover", -2.0, 1.2)
-	EventBus.ability_selected.emit(selected_id())
+	EventBus.ability_selected.emit(selected)
 
 
 func _unhandled_input(event: InputEvent) -> void:

@@ -68,7 +68,7 @@ func integrate_motion(dt: float, own: Vector2, wind_response: float, responsiven
 		guide_time -= dt
 	vel = vel.lerp(target_v, 1.0 - exp(-dt * responsiveness))
 	pos += vel * dt
-	var lim := GameBalance.WORLD_HALF - 4.0
+	var lim := GameBalance.WORLD_HALF - 1.0
 	if absf(pos.x) > lim:
 		pos.x = signf(pos.x) * lim
 		vel.x *= -0.5

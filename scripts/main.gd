@@ -189,7 +189,7 @@ func begin_play(is_new: bool) -> void:
 		_tut_timer = 0.0
 	player.camera.current = true
 	player.input_enabled = true
-	player.abilities.selected = 0
+	player.abilities.selected = "snow_cloud"
 	hud.visible = true
 	hud.refresh_all()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
