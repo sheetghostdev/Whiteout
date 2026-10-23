@@ -150,7 +150,7 @@ func _graphics_tab() -> Control:
 	_slider(vb, "Field of View", 60, 100, 1, func(): return Settings.fov, func(x): Settings.fov = x, "%d°", 1.0)
 	_slider(vb, "Particle Density", 0.2, 1.5, 0.05, func(): return Settings.particle_density, func(x): Settings.particle_density = x)
 	_slider(vb, "Draw Distance", 0.6, 1.5, 0.05, func(): return Settings.draw_distance, func(x): Settings.draw_distance = x)
-	_slider(vb, "Vegetation Density (next load)", 0.4, 1.2, 0.05, func(): return Settings.vegetation_density, func(x): Settings.vegetation_density = x)
+	_slider(vb, "Vegetation Density (on restart)", 0.4, 1.2, 0.05, func(): return Settings.vegetation_density, func(x): Settings.vegetation_density = x)
 	_check(vb, "Motion Effects (head bob)", func(): return Settings.motion_effects, func(on): Settings.motion_effects = on)
 	_check(vb, "Show FPS", func(): return Settings.show_fps, func(on): Settings.show_fps = on)
 	vb.add_child(UIKit.label("Particle density only changes visuals - snowfall and Frost income are unaffected.", 14, UIKit.TEXT_DIM))

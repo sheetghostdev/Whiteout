@@ -16,6 +16,7 @@ var world: WorldBuilder
 var weather: WeatherManager
 var player: Node3D
 var seed_value := DEFAULT_SEED
+var save_path := SaveManager.PATH
 var state := "boot"   # boot, menu, playing, cinematic, completed
 
 var _tex_timer := 0.0
@@ -73,7 +74,7 @@ func start_new_game(modifiers: Array = [], plus_level: int = 0) -> void:
 
 
 func continue_game() -> bool:
-	var d := SaveManager.read()
+	var d := SaveManager.read(save_path)
 	if d.is_empty():
 		return false
 	_new_progression()
@@ -104,14 +105,14 @@ func save_game() -> bool:
 	if player != null and player.has_method("save_state"):
 		pdata = player.save_state()
 	var data := SaveManager.build(seed_value, prog, regions, world.coverage, pdata, weather.to_array())
-	var ok := SaveManager.write(data)
+	var ok := SaveManager.write(data, save_path)
 	if ok:
 		EventBus.save_written.emit()
 	return ok
 
 
 func save_summary() -> Dictionary:
-	var d := SaveManager.read()
+	var d := SaveManager.read(save_path)
 	if d.is_empty():
 		return {}
 	var p: Dictionary = d.get("progression", {})

@@ -64,7 +64,7 @@ func _ready() -> void:
 	_build_ui()
 	map_ui.build_relief(world.terrain, world.renderer.colors)
 	# The title screen shows the saved world as the player left it.
-	var d := SaveManager.read()
+	var d := SaveManager.read(Game.save_path)
 	if not d.is_empty():
 		SaveManager.restore_coverage(d, world.coverage)
 		ShaderLib.set_global("wo_completion", world.coverage.world_completion())

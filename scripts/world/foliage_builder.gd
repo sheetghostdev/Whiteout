@@ -10,6 +10,7 @@ extends Node3D
 const TREE_CHUNK := 64.0
 const GRASS_CHUNK := 32.0
 const FLOWER_CHUNK := 64.0
+const NEAR_END := 190.0
 
 enum Kind { BROADLEAF, PINE, SMALL, BUSH }
 
@@ -202,7 +203,7 @@ func build_trees() -> void:
 			near_meshes[Vector2i(kind, v)] = _mesh_for(kind, v, 0)
 			if kind != Kind.BUSH:
 				far_arrays[Vector2i(kind, v)] = _mesh_for(kind, v, 1).surface_get_arrays(0)
-	var near_end := 190.0
+	var near_end := NEAR_END
 	for key in buckets:
 		var list: Array = buckets[key]
 		var ci: int = key % chunks
@@ -237,6 +238,7 @@ func build_trees() -> void:
 			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF if is_bush else GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 			if is_bush:
 				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				mmi.set_meta("bush", true)
 			add_child(mmi)
 			near_nodes.append(mmi)
 		# Merged far mesh for the whole chunk.
@@ -466,6 +468,11 @@ func build_flowers() -> void:
 func apply_draw_distance(scale: float) -> void:
 	for n in grass_nodes:
 		n.visibility_range_end = 95.0 * scale
+	for n in near_nodes:
+		var bush: bool = n.get_meta("bush", false)
+		n.visibility_range_end = (150.0 if bush else NEAR_END) * scale
+	for n in far_nodes:
+		n.visibility_range_begin = NEAR_END * scale
 	var shader_fade := 80.0 * scale
 	_grass_mat.set_shader_parameter("fade_start", shader_fade - 20.0)
 	_grass_mat.set_shader_parameter("fade_end", shader_fade)

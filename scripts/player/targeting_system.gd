@@ -9,7 +9,7 @@ const INVALID := Color(1.0, 0.56, 0.5, 0.7)
 var _disc: MeshInstance3D
 var _strips: Array[MeshInstance3D] = []
 var _ghost: MeshInstance3D
-var _ghost_mat: ShaderMaterial
+var _ghost_mat: StandardMaterial3D
 var _path: MeshInstance3D
 var _path_mesh: ImmediateMesh
 var _path_mat: ShaderMaterial
@@ -26,8 +26,13 @@ func _ready() -> void:
 		_strips.append(s)
 	_ghost = MeshInstance3D.new()
 	_ghost.mesh = WeatherFX.cloud_mesh(3, true)
-	_ghost_mat = WeatherFX.cloud_material()
-	_ghost_mat.set_shader_parameter("fade", 0.3)
+	# Soft translucent silhouette of the cloud about to be summoned.
+	_ghost_mat = StandardMaterial3D.new()
+	_ghost_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_ghost_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_ghost_mat.albedo_color = Color(0.92, 0.97, 1.0, 0.22)
+	_ghost_mat.rim_enabled = false
+	_ghost_mat.cull_mode = BaseMaterial3D.CULL_BACK
 	_ghost.material_override = _ghost_mat
 	_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_ghost)
@@ -87,7 +92,7 @@ func show_preview(p: Dictionary, _ability_id: String) -> void:
 				var alt := 3.2 + r * 0.45
 				_ghost.global_position = center + Vector3(0, alt, 0)
 				_ghost.scale = Vector3(r * 1.05, r * 0.75, r * 1.05)
-				_ghost_mat.set_shader_parameter("fade", 0.28 if valid else 0.12)
+				_ghost_mat.albedo_color = Color(0.92, 0.97, 1.0, 0.22) if valid else Color(1.0, 0.7, 0.65, 0.12)
 		"strip", "wind":
 			var d: Vector2 = p.get("dir", Vector2(0, -1))
 			var w: float = p.get("width", 4.0)

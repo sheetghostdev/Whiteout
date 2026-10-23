@@ -144,15 +144,23 @@ func _build() -> void:
 	_toasts = VBoxContainer.new()
 	UIKit.place(_toasts, 1, 0, 1, 0, -380, 18, -20, 18)
 	_toasts.add_theme_constant_override("separation", 8)
+	for l in [_pct, _region, _ability_name, _ability_hint, _status, _banner_title, _banner_sub]:
+		_outline(l)
 	_toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_toasts)
 
 	_hints = UIKit.label("", 14, Color(0.85, 0.92, 1.0, 0.75))
 	UIKit.place(_hints, 0, 1, 0, 1, 20, -34, 900, -10)
 	add_child(_hints)
+	_outline(_hints, 4)
 	_fps = UIKit.label("", 13, UIKit.TEXT_DIM)
 	UIKit.place(_fps, 1, 1, 1, 1, -110, -30, -20, -8)
 	add_child(_fps)
+
+
+func _outline(l: Label, size: int = 5) -> void:
+	l.add_theme_constant_override("outline_size", size)
+	l.add_theme_color_override("font_outline_color", Color(0.02, 0.06, 0.14, 0.55))
 
 
 func refresh_all() -> void:
@@ -249,6 +257,7 @@ func _on_frost(v: float) -> void:
 
 func _popup(text: String) -> void:
 	var l := UIKit.label(text, 15, UIKit.FROST)
+	_outline(l, 4)
 	l.position = Vector2(randf_range(0, 30), 0)
 	_popups.add_child(l)
 

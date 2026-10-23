@@ -44,6 +44,7 @@ func _ready() -> void:
 		["save_load", TestSaveLoad.new()],
 		["performance", TestPerformance.new()],
 		["assets", TestNoAssets.new()],
+		["game_flow", TestGameFlow.new()],
 		["progression", TestProgressionBot.new()],
 	]
 	var t0 := Time.get_ticks_msec()

@@ -23,6 +23,10 @@ func _ready() -> void:
 			await _late()
 		"ui":
 			await _ui()
+		"fx":
+			await _fx()
+		"complete":
+			await _complete()
 	get_tree().quit()
 
 
@@ -163,6 +167,102 @@ func _ui() -> void:
 	Game.main._open_settings("menu")
 	await _frames(5)
 	await _shot("24_settings")
+
+
+func _place(x: float, z: float, yaw: float, pitch: float, lift: float = 0.0) -> void:
+	var p: PlayerController = Game.player
+	p.global_position = Vector3(x, Game.world.terrain.surface_height(x, z) + lift, z)
+	p.velocity = Vector3.ZERO
+	p.flying = lift > 1.0
+	_look(yaw, pitch)
+
+
+func _fx() -> void:
+	Game.start_new_game()
+	await _frames(10)
+	var prog := Game.prog
+	prog.add_frost(1e8)
+	prog.add_cores(40)
+	TestStormInteractions.buy_everything(prog)
+	Game.main.hud.refresh_all()
+	var cov := Game.world.coverage
+	# Lake: partially frozen, with ice creeping outward.
+	cov.apply_disc(120, -10, 30.0, 1.0)
+	cov.apply_disc(120, -10, 30.0, 1.0)
+	cov.apply_disc(150, 10, 18.0, 0.6)
+	cov.update_texture()
+	_place(88, 40, -45, -12, 6.0)
+	await _sleep(1.0)
+	await _shot("30_lake_partial")
+	# Blizzard seen from a distance.
+	print("bz ", _cast("blizzard", _ground(-20, 0)))
+	_place(-20, 90, 0, -6, 25.0)
+	await _sleep(4.0)
+	await _shot("31_blizzard_far")
+	# Polar vortex from high up.
+	print("pv ", _cast("polar_vortex", _ground(-60, -60)))
+	_place(-60, 60, 0, -18, 60.0)
+	await _sleep(5.0)
+	await _shot("32_vortex_far")
+	# Avalanche on a snowy mountain slope.
+	cov.apply_disc(-40, -170, 45.0, 1.0)
+	cov.apply_disc(-40, -170, 45.0, 1.0)
+	cov.update_texture()
+	var slope := _find_release(Vector2(-40, -170))
+	print("slope ", slope)
+	_place(slope.x + 10, slope.y + 70, 10, -12, 30.0)
+	print("av ", _cast("avalanche", _ground(slope.x, slope.y)))
+	await _sleep(2.5)
+	await _shot("33_avalanche")
+	await _sleep(2.5)
+	await _shot("34_avalanche_later")
+	# Frost fronts and wind from behind the player.
+	_place(-120, 160, 20, -8, 0.5)
+	await _sleep(0.5)
+	print("ff ", _cast("frost_front", _ground(-130, 130)))
+	await _sleep(1.5)
+	await _shot("35_fronts")
+	print("aw ", _cast("arctic_wind", _ground(-130, 130)))
+	for k in 4:
+		Game.weather.cooldowns["snow_cloud"] = 0.0
+		_cast("snow_cloud", _ground(-125 + k * 6, 140))
+	await _sleep(2.5)
+	await _shot("36_wind_clouds")
+	Game.use_thaw_sense(Game.player.global_position)
+	await _sleep(2.0)
+	await _shot("37_thaw_sense")
+
+
+func _find_release(around: Vector2) -> Vector2:
+	var t := Game.world.terrain
+	var best := around
+	var bs := 0.0
+	for z in range(-30, 31, 4):
+		for x in range(-30, 31, 4):
+			var p := around + Vector2(x, z)
+			if Avalanche.release_check(t, Game.world.coverage, p) == "":
+				var s := t.slope(p.x, p.y)
+				if s > bs:
+					bs = s
+					best = p
+	return best
+
+
+func _complete() -> void:
+	Game.start_new_game()
+	await _frames(10)
+	Game.world.coverage.apply_disc(0, 0, 400.0, 1.0)
+	Game.world.coverage.apply_disc(0, 0, 400.0, 1.0)
+	Game.world.coverage.apply_disc(0, 0, 400.0, 1.0)
+	Game.prog.stats["time"] = 3655.0
+	Game.complete_world()
+	await _sleep(3.0)
+	await _shot("40_cinematic_a")
+	await _sleep(6.0)
+	await _shot("41_cinematic_b")
+	await _wait_until(func(): return Game.main.completion.visible, 40.0)
+	await _sleep(1.5)
+	await _shot("42_completion")
 
 
 func _sleep(s: float) -> void:
