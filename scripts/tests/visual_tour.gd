@@ -31,6 +31,8 @@ func _ready() -> void:
 			await _snowcheck()
 		"island":
 			await _island()
+		"round3":
+			await _round3()
 	get_tree().quit()
 
 
@@ -327,3 +329,47 @@ func _island() -> void:
 	cov.update_texture()
 	await _view(60, 112, 200, -28, 1.3, "68_village_frozen", 2.0)
 	await _view(60, 136, 230, -15, 0.45, "69_shivering", 2.5)
+
+
+func _round3() -> void:
+	Game.start_new_game()
+	await _frames(10)
+	var crops: MeshInstance3D = Game.world.settlements.get_node("Crops")
+	(crops.material_override as ShaderMaterial).set_shader_parameter("grow_seconds", 20.0)
+	await _sleep(3.0)
+	await _view(-110, 104, 160, -24, 0.9, "70_crops_growing", 2.0)
+	var cov := Game.world.coverage
+	cov.apply_sweep(-150, 100, -100, 150, 9.0, 1.0, 1.0)
+	cov.update_texture()
+	await _view(-110, 104, 160, -24, 0.9, "71_crops_snowed", 3.0)
+	await _view(-125, 118, 120, -14, 0.5, "72_crops_close", 2.0)
+	# The cloud rises over rooftops.
+	var church: Dictionary = Game.world.terrain.settlements.buildings[9]
+	var cp: Vector2 = church["pos"]
+	await _view(cp.x, cp.y, 90, -6, 1.1, "73_over_church", 4.0)
+	var house: Dictionary = Game.world.terrain.settlements.buildings[2]
+	var hp: Vector2 = house["pos"]
+	await _view(hp.x, hp.y, 0, -6, 1.1, "74_over_house", 4.0)
+	# A real flown trail seen low and close, like a player sees it.
+	Game.player.autopilot = true
+	_cloud().pos = Vector2(-40, 60)
+	await _sleep(0.5)
+	_look(30, -22, 0.8)
+	await _fly(Vector2(0.8, 0.6).normalized(), 5.0)
+	await _fly(Vector2(-0.6, 0.8).normalized(), 3.0)
+	await _sleep(1.0)
+	await _shot("75_trail_low")
+	# The compass points to the last green ground.
+	for k in 3:
+		cov.apply_disc(0, 0, 400.0, 1.0)
+	cov.apply_disc(-140, -20, 6.0, -1.0)
+	for z in range(-30, -10):
+		for x in range(-150, -130):
+			cov.cov[(z + 256) * SnowCoverage.N + x + 256] = 0.0
+	cov.deserialize(cov.serialize())
+	cov.update_texture()
+	Game.prog.world_fraction = cov.world_completion()
+	ShaderLib.set_global("wo_completion", cov.world_completion())
+	await _view(60, 60, 0, -25, 1.2, "76_compass", 2.0)
+	await _view(60, 60, 180, -25, 1.2, "76b_compass_behind", 2.0)
+	await _view(-120, 10, 90, -30, 1.2, "77_last_green", 2.0)

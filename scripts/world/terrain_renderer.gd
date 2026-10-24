@@ -5,8 +5,8 @@ extends Node3D
 
 const CHUNK_CELLS := 64
 const FIELD_COLORS := {
-	"wheat": Color(0.78, 0.68, 0.36), "furrow": Color(0.47, 0.35, 0.22),
-	"greens": Color(0.36, 0.55, 0.22), "pasture": Color(0.45, 0.62, 0.27),
+	"wheat": Color(0.55, 0.45, 0.28), "corn": Color(0.47, 0.36, 0.23), "sprouts": Color(0.45, 0.34, 0.22),
+	"greens": Color(0.42, 0.34, 0.22), "pasture": Color(0.45, 0.62, 0.27),
 }
 
 var terrain: TerrainData

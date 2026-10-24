@@ -126,7 +126,7 @@ func _place_camera(delta: float, snap: bool) -> void:
 	var back := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch) * Vector3(0, 0, _dist)
 	var p := anchor + back
 	# Never let the camera sink into a hillside.
-	var floor_y := terrain.surface_height(p.x, p.z) + 2.5
+	var floor_y := terrain.obstacle_height(p.x, p.z) + 2.5
 	if p.y < floor_y:
 		p.y = floor_y
 	camera.global_position = p if snap else camera.global_position.lerp(p, 1.0 - exp(-delta * 10.0))

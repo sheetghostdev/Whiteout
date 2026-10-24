@@ -34,6 +34,7 @@ var cell_ocean := PackedByteArray()      # N*N, 1 = open sea (not part of the pl
 var flow := PackedVector2Array()         # V*V river flow direction * speed (zero on still water)
 var coast := PackedFloat32Array()        # V*V distance inland from the coast (negative at sea)
 var cell_built := PackedByteArray()      # N*N, 1 = building or yard, 2 = farm field
+var cell_roof := PackedFloat32Array()    # N*N, absolute height of rooftops (-1000 where open)
 var settlements := SettlementPlan.new()
 var rivers: Array = []                   # Array of {"points": PackedVector3Array (x, water_y, z), "widths": PackedFloat32Array}
 var min_height := 0.0
@@ -182,6 +183,7 @@ func generate(p_seed: int) -> void:
 	_build_lake_water()
 	_build_sea()
 	_classify_cells()
+	_mark_roofs()
 	min_height = 1.0e9
 	max_height = -1.0e9
 	for h in heights:
@@ -446,6 +448,33 @@ func _classify_cells() -> void:
 			cell_built[idx] = built
 			cell_ocean[idx] = 1 if sea else 0
 			cell_water[idx] = 1 if wl > -100.0 and h < wl - 0.05 and not sea else 0
+
+
+func _mark_roofs() -> void:
+	cell_roof.resize(N * N)
+	cell_roof.fill(-1000.0)
+	for o in settlements.obstacles(func(p: Vector2) -> float: return sample_height(p.x, p.y)):
+		var c: Vector2 = o[0]
+		var hs: Vector2 = o[1]
+		var rot: float = o[2]
+		var top: float = o[3]
+		var reach := int(ceil(hs.length())) + 1
+		for cj in range(maxi(int(c.y + HALF) - reach, 0), mini(int(c.y + HALF) + reach, N - 1) + 1):
+			for ci in range(maxi(int(c.x + HALF) - reach, 0), mini(int(c.x + HALF) + reach, N - 1) + 1):
+				var local := (Vector2(-HALF + ci + 0.5, -HALF + cj + 0.5) - c).rotated(rot)
+				if absf(local.x) <= hs.x and absf(local.y) <= hs.y:
+					var idx := cj * N + ci
+					cell_roof[idx] = maxf(cell_roof[idx], top)
+
+
+## Highest solid thing at a point: ground, water surface or a rooftop.
+func obstacle_height(x: float, z: float) -> float:
+	var h := surface_height(x, z)
+	if not in_bounds(x, z):
+		return h
+	var ci := clampi(int(floor(x + HALF)), 0, N - 1)
+	var cj := clampi(int(floor(z + HALF)), 0, N - 1)
+	return maxf(h, cell_roof[cj * N + ci])
 
 
 # ---------------------------------------------------------------- sampling

@@ -25,6 +25,7 @@ var last_moved := 0.0      # metres flown in the latest snowfall step
 var idle_time := 10.0      # seconds since the cloud last really moved
 var _snow_from := Vector2.INF
 var _resting := true
+var _wake_side := 1.0
 
 # visuals
 var _body: Node3D
@@ -106,16 +107,17 @@ func sim_step(dt: float) -> void:
 		_wake_acc += moved
 
 
-## Snow laid per pass (1.0 freezes ground in one pass at full strength).
-func current_rate() -> float:
+## Half-width of the strip your snow freezes, in metres. Everything inside
+## it freezes completely in one pass, so there is never half-done ground.
+func snow_width() -> float:
 	var prog := manager.prog
-	var r := prog.stat("rate")
-	# Gusting thins the snow, unless Tailwind keeps it thick.
+	var w := radius * prog.stat("rate")
+	# Gusting narrows the trail, unless Tailwind keeps it wide.
 	if dashing and not prog.has("tailwind"):
-		r *= 0.65
+		w *= 0.7
 	if high_ground:
-		r *= 1.5
-	return r
+		w *= 1.3
+	return w
 
 
 ## True while the cloud is being flown (passive effects pause when you rest).
@@ -127,7 +129,8 @@ func _snowfall(dt: float) -> void:
 	var prog := manager.prog
 	var cov := manager.cov
 	high_ground = prog.has("mountain_air") and manager.terrain.highland_mask(pos.x, pos.y) > 0.5
-	rate = current_rate()
+	var width := snow_width()
+	rate = width
 	if _snow_from == Vector2.INF:
 		_snow_from = pos
 	last_moved = _snow_from.distance_to(pos)
@@ -140,11 +143,10 @@ func _snowfall(dt: float) -> void:
 	var resting := idle_time > 0.6
 	if resting != _resting:
 		_resting = resting
-		var cap := cov.apply_disc(pos.x, pos.y, radius * 0.95, rate * 0.5, 1, 0, 0.3)
+		var cap := cov.apply_disc(pos.x, pos.y, width, 1.0, 1, 0, 1.0)
 		manager.add_gain(cap, cov.last_cov_delta, self)
 	if last_moved > 0.05:
-		var snap := 0.7 if prog.has("deep_freeze") else SnowCoverage.FULL_SNAP
-		var gain := cov.apply_sweep(_snow_from.x, _snow_from.y, pos.x, pos.y, radius, rate, prog.stat("core"), snap)
+		var gain := cov.apply_sweep(_snow_from.x, _snow_from.y, pos.x, pos.y, width, 1.0, 1.0)
 		manager.add_gain(gain, cov.last_cov_delta, self)
 		_snow_from = pos
 	# Avalanche Rider: drifting over a snowy slope sets the slope off.
@@ -160,14 +162,18 @@ func _wake(moved: float) -> void:
 	if life_s <= 0.0:
 		_wake_acc = 0.0
 		return
-	var spacing := maxf(radius * 0.9, 2.5)
+	var spacing := maxf(radius * 0.6, 2.0)
 	if _wake_acc < spacing:
 		return
 	_wake_acc = 0.0
 	if not manager.can_spawn("snow_cloud"):
 		return
 	var w := SnowCloud.new()
-	w.make_wake(pos, base_radius() * 0.7, current_rate() * 0.55, life_s)
+	# Flurries peel off the edge of your trail and drift outward, widening it.
+	_wake_side = -_wake_side
+	var side := Vector2(-vel.y, vel.x).normalized() * _wake_side
+	var r := base_radius() * 0.5
+	w.make_wake(pos + side * maxf(snow_width() - r, 0.0), r, side * 2.0, life_s)
 	manager.spawn(w, -1, "snow_wake")
 
 
@@ -193,7 +199,7 @@ func _sync_cloudlets() -> void:
 func _end_vortex() -> void:
 	vortex_t = 0.0
 	if manager.prog.has("absolute_zero"):
-		manager.spawn_pulse(pos, base_radius() * vortex_mult * 2.5, 0.8, -1, "absolute_zero")
+		manager.spawn_pulse(pos, base_radius() * vortex_mult * 2.5, 1.0, -1, "absolute_zero")
 
 
 # --------------------------------------------------------------- visuals
@@ -248,13 +254,19 @@ func _build_snow() -> void:
 	add_child(_snow)
 
 
-## Height that keeps the cloud above hills under its whole footprint.
+## Height that keeps the cloud above hills and rooftops under its whole
+## footprint (it rises over a house just as it rises over a hill).
 func _clearance(p: Vector2) -> float:
+	var terrain := manager.terrain
 	var h := sim_height(p)
+	var roof := terrain.obstacle_height(p.x, p.y)
 	var r := radius * 0.7
-	for d in [Vector2(r, 0), Vector2(-r, 0), Vector2(0, r), Vector2(0, -r)]:
+	for d in [Vector2(r, 0), Vector2(-r, 0), Vector2(0, r), Vector2(0, -r),
+			Vector2(r, r) * 0.7, Vector2(-r, r) * 0.7, Vector2(r, -r) * 0.7, Vector2(-r, -r) * 0.7]:
 		h = maxf(h, sim_height(p + d) - 2.0)
-	return h
+		roof = maxf(roof, terrain.obstacle_height(p.x + d.x, p.y + d.y))
+	# The cloud's underside sits about half a radius below its centre.
+	return maxf(h, roof + radius * 0.55 + 3.0 - altitude())
 
 
 func visual_update(delta: float, t: float) -> void:

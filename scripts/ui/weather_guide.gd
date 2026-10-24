@@ -42,9 +42,10 @@ func open() -> void:
 	var prog := Game.prog
 	_list.add_child(UIKit.label("YOU ARE THE SNOW CLOUD", 15, UIKit.ACCENT))
 	_list.add_child(_entry("cloud", "Drift and snow",
-		"WASD drifts relative to the camera, the mouse looks around and the wheel zooms. Every pass lays a layer of snow " +
-		"along your path - sweep back and forth to freeze ground solid. Resting earns nothing; each patch pays Frost only once.", true))
-	_list.add_child(_entry("wind", "Ride a gust", "Hold Shift to fly faster. Faster means thinner snow, unless you find Tailwind.", true))
+		"WASD drifts relative to the camera, the mouse looks around and the wheel zooms. Everything along your path freezes " +
+		"in one pass, and narrow gaps between passes fill in by themselves. Resting earns nothing; each patch pays Frost only once.", true))
+	_list.add_child(_entry("wind", "Ride a gust", "Hold Shift to fly faster. Gusting narrows your trail, unless you find Tailwind.", true))
+	_list.add_child(_entry("eye", "Finding the last green", "When no green ground is close by, an arrow points to the nearest patch. Near the end, the last green ground glows softly.", true))
 	_list.add_child(_entry("crystal", "Grow", "Press TAB to open the upgrade web. Finishing a node reveals the nodes it connects to; keystones change how you play.", true))
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 8)

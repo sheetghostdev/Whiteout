@@ -91,7 +91,7 @@ func _farm() -> void:
 	buildings.append({"pos": Vector2(-96, 80), "size": Vector3(7.0, 4.6, 8.0), "rot": 0.3, "kind": "house", "seed": 401})
 	buildings.append({"pos": Vector2(-114, 82), "size": Vector3(10.0, 7.0, 14.0), "rot": 0.25, "kind": "barn", "seed": 402})
 	buildings.append({"pos": Vector2(-84, 102), "size": Vector3(4.0, 3.0, 4.5), "rot": -0.2, "kind": "shed", "seed": 403})
-	var crops := ["wheat", "furrow", "greens", "wheat", "furrow", "pasture"]
+	var crops := ["wheat", "corn", "greens", "wheat", "sprouts", "pasture"]
 	var origin := Vector2(-150, 112)
 	var k := 0
 	for j in 2:
@@ -113,6 +113,34 @@ func _farm() -> void:
 		var p := origin + Vector2(_rng.randf_range(-10, 70), _rng.randf_range(-8, 36))
 		props.append({"pos": p, "kind": "hay", "rot": _rng.randf() * TAU})
 	props.append({"pos": origin + Vector2(30, 14), "kind": "scarecrow", "rot": 0.4})
+
+
+## Roof rise used by the builder, so the cloud can clear rooftops.
+static func roof_rise(b: Dictionary) -> float:
+	var hw: float = (b["size"] as Vector3).x * 0.5
+	match String(b["kind"]):
+		"church":
+			return hw * 1.1
+		"barn":
+			return hw * 0.85
+		"shed":
+			return 1.0
+	return hw * 0.7
+
+
+## Footprints with absolute top heights: [centre, half-size, rot, top].
+func obstacles(ground: Callable) -> Array:
+	var out: Array = []
+	for b in buildings:
+		var pos: Vector2 = b["pos"]
+		var s: Vector3 = b["size"]
+		var base: float = ground.call(pos) - 0.15
+		var top: float = base + 0.65 + s.y + roof_rise(b) + 1.0
+		out.append([pos, Vector2(s.x * 0.5 + 0.6, s.z * 0.5 + 0.6), float(b["rot"]), top])
+		if b["kind"] == "church":
+			var tower: Vector2 = pos + Vector2(0, s.z * 0.5 + 1.6).rotated(-float(b["rot"]))
+			out.append([tower, Vector2(2.4, 2.4), float(b["rot"]), base + 0.65 + s.y + 12.5])
+	return out
 
 
 ## Rectangle test against a building footprint (with margin).

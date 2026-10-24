@@ -25,7 +25,7 @@ func configure(width: float) -> void:
 	max_speed = 14.0
 	momentum = 0.6
 	split_rate = 0.06
-	strength = 0.6
+	strength = 1.0
 	max_heads = 2
 	life = 999.0
 	radius = w0
@@ -121,7 +121,7 @@ func sim_step(dt: float) -> void:
 		var fan := lerpf(1.3, 1.0, clampf(g.length() / 0.3, 0.0, 1.0))
 		var w: float = float(h["w"]) * minf(grow, grow_cap) * float(h["boost"]) * fan
 		var amt := strength * float(h["boost"])
-		var gain := cov.apply_sweep(p.x, p.y, np.x, np.y, w * 0.5, amt)
+		var gain := cov.apply_sweep(p.x, p.y, np.x, np.y, w * 0.5, amt, 1.0)
 		manager.add_gain(gain, cov.last_cov_delta, self)
 		h["boost"] = 1.0
 		h["prev"] = p
@@ -132,7 +132,7 @@ func sim_step(dt: float) -> void:
 		manager.note_storm_size(w * 0.5)
 		# Lake water stops the slide in a spray of snow. Streams are crossed.
 		if terrain.is_water(np.x, np.y) and terrain.lake_distance(np.x, np.y) < 90.0:
-			var g2 := cov.apply_disc(np.x, np.y, w * 0.8, 0.6)
+			var g2 := cov.apply_disc(np.x, np.y, w * 0.8, 1.0, 1, 0, 1.0)
 			manager.add_gain(g2, cov.last_cov_delta, self)
 			h["alive"] = false
 			continue

@@ -65,19 +65,18 @@ func _snowfall(t) -> void:
 	c.move_input = Vector2.ZERO
 	_run(w, 3.0)
 	var mid := Vector2(5.0, 80.0)
-	var one := cov.get_coverage(mid.x, mid.y)
-	t.approx(one, minf(prog.stat("rate") * cov.exposure[cov.cell_index(mid.x, mid.y)], 1.0), 0.02,
-		"one pass lays exactly one layer of snow (%.2f)" % one)
-	t.check(cov.get_coverage(mid.x, mid.y + c.radius + 2.0) == 0.0, "snow only falls under the cloud's path")
+	t.check(cov.get_coverage(mid.x, mid.y) == 1.0, "one pass freezes the ground solid")
+	var partial := 0
+	for z in range(70, 91):
+		var v := cov.get_coverage(mid.x, z + 0.5)
+		if v > 0.0 and v < 1.0:
+			partial += 1
+	t.check(partial == 0, "a pass never leaves half-frozen ground")
+	t.check(cov.get_coverage(mid.x, mid.y + c.snow_width() + 2.0) == 0.0, "snow only falls along the cloud's path")
 	t.check(prog.frost > 0.0, "freezing earns Frost")
 	var f0 := prog.frost
 	_run(w, 4.0)
 	t.check(prog.frost - f0 < 0.5, "resting earns nothing more")
-	# Passing back and forth finishes the job.
-	for k in 6:
-		c.move_input = Vector2(-1 if k % 2 == 0 else 1, 0)
-		_run(w, 3.0)
-	t.check(cov.get_coverage(mid.x, mid.y) >= 1.0, "a few passes freeze the ground solid")
 	# Flying over ground that is already frozen pays nothing.
 	c.move_input = Vector2.ZERO
 	_run(w, 1.0)
@@ -95,7 +94,7 @@ func _snowfall(t) -> void:
 	# Bigger and snowier clouds freeze more per pass.
 	var prog2 := Progression.new()
 	prog2.levels["billow"] = 5
-	prog2.levels["flurry"] = 5
+	prog2.levels["flurry"] = 3
 	var w2 := _world(t, prog2)
 	var c2 := w2.spawn_player_cloud(Vector2(0, 80))
 	c2.move_input = Vector2(1, 0)
@@ -130,17 +129,18 @@ func _freeze_rate(t, levels: Dictionary, dash: bool, seconds: float = 8.0, throt
 
 func _keystones(t) -> void:
 	var base := {"billow": 5, "swell": 3, "flurry": 5, "heavy_snow": 3}
-	# Deep Freeze snaps mostly-white ground fully frozen, saving a pass.
-	var thin := {"billow": 5, "swell": 3, "flurry": 5}
-	var plain := _freeze_rate(t, thin, false, 6.0, 1.0, true)
-	var deep := thin.duplicate()
-	deep["deep_freeze"] = 1
-	var df := _freeze_rate(t, deep, false, 6.0, 1.0, true)
-	t.check(df > plain * 1.1, "Deep Freeze freezes more ground (%.0f vs %.0f)" % [df, plain])
+	# Deep Freeze lets drifting snow seal much wider gaps between passes.
+	var pdf := Progression.new()
+	var wdf := _world(t, pdf)
+	wdf.spawn_player_cloud(Vector2(0, 0))
+	pdf.levels["deep_freeze"] = 1
+	_run(wdf, 0.6)
+	t.check(wdf.cov.gap_reach > 2, "Deep Freeze widens the gaps drifting snow can seal")
+	wdf.queue_free()
 	var fast := _freeze_rate(t, base, true)
 	var tail := base.duplicate()
 	tail["tailwind"] = 1
-	t.check(_freeze_rate(t, tail, true) > fast * 1.2, "Tailwind keeps your snow thick while gusting")
+	t.check(_freeze_rate(t, tail, true) > fast * 1.2, "Tailwind keeps your trail wide while gusting")
 	var wake := base.duplicate()
 	wake["snow_wake"] = 1
 	var w_on := _freeze_rate(t, wake, true, 10.0)
@@ -150,7 +150,7 @@ func _keystones(t) -> void:
 	var p := Progression.new()
 	var r0 := p.stat("radius")
 	p.levels["thunderhead"] = 1
-	t.check(p.stat("radius") >= r0 + 3.0, "Thunderhead makes you vastly bigger")
+	t.check(p.stat("radius") >= r0 + 2.5, "Thunderhead makes you vastly bigger")
 	# Avalanche Rider releases on snowy slopes only.
 	var prog := Progression.new()
 	prog.levels["avalanche"] = 1

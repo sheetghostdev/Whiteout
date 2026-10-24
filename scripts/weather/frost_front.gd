@@ -27,7 +27,7 @@ func configure(p_width: float, p_length: float, p_splinter: bool) -> void:
 	speed = 20.0
 	total = p_length
 	remaining = total
-	strength = 0.4
+	strength = 1.0
 	rebounds = 0
 	branch_chance = 0.0
 	splinter = p_splinter
@@ -81,7 +81,7 @@ func sim_step(dt: float) -> void:
 		_finish()
 		return
 	var np := pos + dir * step
-	var gain := cov.apply_sweep(pos.x, pos.y, np.x, np.y, width * 0.5, strength)
+	var gain := cov.apply_sweep(pos.x, pos.y, np.x, np.y, width * 0.5, strength, 1.0)
 	manager.add_gain(gain, cov.last_cov_delta, self)
 	pos = np
 	traveled += step

@@ -28,6 +28,7 @@ var land_per_chunk := PackedInt32Array()
 var chunk_incomplete := PackedInt32Array()
 var chunk_dirty := PackedByteArray()
 var fill_dirty := PackedByteArray()      # chunks touched since the last drift-fill pass
+var gap_reach := 2                       # drift fill seals gaps up to 2 * reach - 1 cells wide
 var any_dirty := false
 
 var region_sum := PackedFloat64Array()
@@ -75,6 +76,8 @@ func setup(terrain: TerrainData) -> void:
 		land_per_chunk[((i / N) / CS) * CH + (i % N) / CS] += 1
 		var is_w := water[i] == 1
 		reward[i] = GameBalance.WATER_REWARD if is_w else GameBalance.REGION_REWARD[r]
+		if terrain.cell_built[i] == 2:
+			reward[i] *= GameBalance.FIELD_REWARD
 		exposure[i] = GameBalance.WATER_EXPOSURE if is_w else GameBalance.REGION_EXPOSURE[r]
 		region_total[r] += 1.0
 		total_reward += reward[i]
@@ -273,7 +276,7 @@ func apply_disc(cx: float, cz: float, r: float, amount: float, stride: int = 1, 
 	if x0 > x1 or z0 > z1:
 		return 0.0
 	var r2 := r * r
-	var inner2 := r2 * clampf(core, 0.0, 0.95)
+	var inner2 := r2 * clampf(core, 0.0, 1.0)
 	var fall := r2 - inner2
 	var gain := 0.0
 	var dsum := 0.0
@@ -353,7 +356,7 @@ func apply_sweep(ax: float, az: float, bx: float, bz: float, hw: float, amount: 
 	var z1 := mini(N - 1, int(floor(maxf(az, bz) + HALF + hw)))
 	if x0 > x1 or z0 > z1:
 		return 0.0
-	var soft := hw * clampf(soft_from, 0.0, 0.98)
+	var soft := hw * clampf(soft_from, 0.0, 1.0)
 	var soft_den := hw - soft
 	var gain := 0.0
 	var dsum := 0.0
@@ -528,10 +531,11 @@ func water_spread_tick(dt: float, rate: float) -> float:
 	return gain
 
 
-## Drifting snow: in chunks that were snowed on recently, any cell that is
-## mostly surrounded by frozen ground (5 of 8 neighbours, or 4 when already
-## half white) freezes too - so 1 m slivers between passes and single
-## missed specks fill themselves in, while real gaps wait for another pass.
+## Drifting snow: in chunks that were snowed on recently, unfrozen cells
+## freeze when they are mostly surrounded by frozen ground, or when frozen
+## ground lies on both opposite sides within `gap_reach` cells. Slivers and
+## narrow gaps between passes and single missed specks fill in by themselves,
+## while open ground (frozen on one side only) waits for you.
 ## Processes at most `budget` chunks per call. Returns the Frost gained.
 func drift_fill(budget: int) -> float:
 	var gain := 0.0
@@ -550,24 +554,48 @@ func drift_fill(budget: int) -> float:
 				var i := z * N + x
 				if cov[i] >= 1.0:
 					continue
-				var frozen_n := 0
-				var seen := 0
-				for oz in range(-1, 2):
-					var nz := z + oz
-					if nz < 0 or nz >= N:
-						continue
-					for ox in range(-1, 2):
-						var nx := x + ox
-						if (ox == 0 and oz == 0) or nx < 0 or nx >= N:
-							continue
-						seen += 1
-						if cov[nz * N + nx] >= 0.9:
-							frozen_n += 1
-				if frozen_n >= 5 or frozen_n == seen or (frozen_n >= 4 and cov[i] >= 0.5):
+				if _boxed_in(x, z) or _bridged(x, z):
 					gain += _set_cell(i, 1.0)
 		if done >= budget:
 			break
 	return gain
+
+
+func _boxed_in(x: int, z: int) -> bool:
+	var frozen_n := 0
+	var seen := 0
+	for oz in range(-1, 2):
+		var nz := z + oz
+		if nz < 0 or nz >= N:
+			continue
+		for ox in range(-1, 2):
+			var nx := x + ox
+			if (ox == 0 and oz == 0) or nx < 0 or nx >= N:
+				continue
+			seen += 1
+			if cov[nz * N + nx] >= 1.0:
+				frozen_n += 1
+	return frozen_n >= 5 or frozen_n == seen
+
+
+## Frozen ground within reach on both sides along the row or column.
+## (Diagonals are left out on purpose: they would let the fill creep along
+## staircase-shaped edges into open ground.)
+func _bridged(x: int, z: int) -> bool:
+	if _frozen_within(x, z, 1, 0) and _frozen_within(x, z, -1, 0):
+		return true
+	return _frozen_within(x, z, 0, 1) and _frozen_within(x, z, 0, -1)
+
+
+func _frozen_within(x: int, z: int, dx: int, dz: int) -> bool:
+	for k in range(1, gap_reach + 1):
+		var nx := x + dx * k
+		var nz := z + dz * k
+		if nx < 0 or nz < 0 or nx >= N or nz >= N:
+			return true
+		if cov[nz * N + nx] >= 1.0:
+			return true
+	return false
 
 
 ## Fills tiny isolated holes that are visually insignificant. Only touches

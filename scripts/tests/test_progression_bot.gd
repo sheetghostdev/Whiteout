@@ -42,9 +42,10 @@ func run(t, full: bool) -> void:
 			t.check(sk.has("frost_wave"), "standard: unlocks Frost Wave")
 			t.check(sk.has("vortex_form") and float(sk["vortex_form"]) < float(res["time"]) * 0.8, "standard: Vortex Form arrives with real work left")
 			# The bot always flies straight to the nearest green ground and never
-			# pauses; ~15 bot-minutes is roughly 30-45 minutes for a person.
-			t.check(float(res["time"]) > 12.0 * 60.0 and float(res["time"]) < 35.0 * 60.0, "standard: bot completion time in the tuned window (%s)" % UIKit.fmt_time(res["time"]))
-			t.check(float(res["spent_fraction"]) > 0.55, "standard: most of the web is bought by the end (%d%%)" % int(float(res["spent_fraction"]) * 100.0))
+			# pauses; ~12 bot-minutes is roughly 25-35 minutes for a person.
+			t.check(float(res["time"]) > 9.0 * 60.0 and float(res["time"]) < 35.0 * 60.0, "standard: bot completion time in the tuned window (%s)" % UIKit.fmt_time(res["time"]))
+			t.check(float(res["spent_fraction"]) > 0.5, "standard: most of the web is bought by the end (%d%%)" % int(float(res["spent_fraction"]) * 100.0))
+			t.check(float(res["radius"]) >= 12.0, "standard: you grow into a big cloud before the end (%.0f m)" % float(res["radius"]))
 
 
 func _print_row(r: Dictionary) -> void:

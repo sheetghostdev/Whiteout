@@ -60,4 +60,9 @@ void fragment() {
 	// ---- thaw sense
 	float tg = wo_thaw_glow(xz) * (1.0 - m);
 	EMISSION += vec3(1.0, 0.52, 0.16) * tg * 0.8;
+
+	// ---- late game: the last green ground glows softly so it is easy to spot
+	float late = smoothstep(0.8, 0.95, wo_completion);
+	float pulse = 0.6 + 0.4 * sin(TIME * 2.2);
+	EMISSION += vec3(1.0, 0.62, 0.22) * (1.0 - m) * late * pulse * 0.22;
 }

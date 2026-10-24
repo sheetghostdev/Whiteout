@@ -111,13 +111,13 @@ float wo_cov_warped(vec2 xz) {
 
 // Maps coverage 0..1 to a visible snow mask with natural patchy accumulation.
 // Coverage >= 0.97 is always fully white, so "looks frozen" == "is frozen".
-// Partial coverage reads as an even dusting that thickens smoothly, with
-// only a soft hint of variation, so falling snow never looks patchy.
+// Snow edges fade in from nothing with zero slope, so the boundary between
+// snow and grass is always a soft, irregular blend - never a drawn line.
 float wo_snow_mask(float c, vec2 xz) {
-	float s = clamp((c - 0.01) / 0.96, 0.0, 1.0);
+	float s = clamp((c - 0.02) / 0.95, 0.0, 1.0);
 	float n = wo_rfbm(xz * 0.18) - 0.5;
-	float m = s + n * 0.22 * s * (1.0 - s) * 4.0;
-	return clamp(sqrt(max(m, 0.0)) * 0.55 + m * 0.45, 0.0, 1.0);
+	float m = clamp(s + n * 0.3 * s * (1.0 - s) * 4.0, 0.0, 1.0);
+	return m * m * (3.0 - 2.0 * m);
 }
 
 vec3 wo_snow_color(vec3 world_normal, vec2 xz) {

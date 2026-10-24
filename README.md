@@ -43,11 +43,12 @@ All bindings can be changed in Settings → Controls.
 - **Goal:** freeze 100% of the island (about 174,000 m² of land in a wide
   sea). Green means unfinished, white means done; the landscape itself is
   the progress bar.
-- **You are the cloud.** Every pass you make lays an even layer of snow
-  along your path; a few passes (or one, once you are strong) freeze the
-  ground solid. Resting lays nothing and earns nothing. Each square metre
-  pays **Frost** only once, and snow drifts into thin slivers and single
-  missed specks between your passes by itself.
+- **You are the cloud.** Everything along your path freezes in a single
+  pass - there is no half-frozen ground to hunt for. Resting lays nothing
+  and earns nothing. Each square metre pays **Frost** only once. Snow
+  drifts into narrow gaps between your passes by itself (up to about 3 m,
+  or 7 m with Deep Freeze), an arrow points to the nearest green ground
+  when none is close, and near the end the last green ground glows softly.
 - **One currency, one upgrade web.** Frost buys nodes in a web of 47
   upgrades across seven branches: Size, Snowfall, Wind, Cloudlets, Storm
   skills, The Land and Polar. Finishing a node reveals only its neighbours,
@@ -65,9 +66,12 @@ All bindings can be changed in Settings → Controls.
   to the sea through a river. Lakes and rivers freeze with spreading ice
   while you are out flying.
 - **People:** a village with a church and a well, a lakeside hamlet with a
-  pier, and a farm with a barn, fields, fences and hay. Villagers stroll the
+  pier, and a farm with a barn, fences, hay and fields of wheat, corn,
+  cabbages and sprouts that grow and ripen as you play - until your snow
+  flattens them (frozen fields pay extra Frost). Villagers stroll the
   roads; once snow settles around them they slow down, hug themselves,
-  stamp their feet and shiver. Snow settles on roofs and chimneys smoke.
+  stamp their feet and shiver. Snow settles on roofs, chimneys smoke, and
+  your cloud rises over rooftops just as it does over hills.
   Regional milestones pay Frost; world milestones bring new, bigger nodes
   within reach.
 - **Ending:** when the world is frozen, a camera flight shows the ice age,
@@ -158,17 +162,17 @@ over it to paint, gusts between patches, fires skills when they would hit
 green ground, mows across it in passes, fires skills when they would hit
 green ground, and shops by strategy (cheapest first, spread across
 branches, random, saving up, skills last). With the current tuning every
-strategy completes the island in about 15–17 bot-minutes. The first
+strategy completes the island in about 11–13 bot-minutes. The first
 purchase lands within seconds, and there is never much more than a minute
 without an affordable upgrade. About 60% of the web gets bought, with about
-6 open choices on average (11 at most). The bot always knows where the
-nearest green is and never pauses, so a person should take noticeably
-longer (roughly 30–45 minutes); that still needs real playtesting to
-confirm.
+6 open choices on average (11 at most), and the cloud ends at roughly a
+13 m radius. The bot always knows where the nearest green is and never
+pauses, so a person should take noticeably longer (roughly 25–35
+minutes); that still needs real playtesting to confirm.
 
 `scenes/visual_tour.tscn` boots the game, performs scripted actions and
 saves screenshots to `user://tour/` (scenarios: `basic`, `fx`, `late`,
-`ui`, `complete`, `island`, `snowcheck`).
+`ui`, `complete`, `island`, `snowcheck`, `round3`).
 
 ## Performance notes
 

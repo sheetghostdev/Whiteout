@@ -30,13 +30,22 @@ func build(t: TerrainData, coverage: SnowCoverage) -> void:
 		_prop(mb, p)
 	for f in plan.fences:
 		_fence(mb, f[0], f[1])
-	for f in plan.fields:
-		_field(mb, f)
 	var mi := MeshInstance3D.new()
 	mi.name = "Buildings"
 	mi.mesh = mb.commit()
 	mi.material_override = _mat
 	add_child(mi)
+	var crops := MeshBuilder.new()
+	for f in plan.fields:
+		_field(crops, f)
+	if crops.vertex_count() > 0:
+		var cm := MeshInstance3D.new()
+		cm.name = "Crops"
+		cm.mesh = crops.commit()
+		cm.material_override = ShaderLib.material("crops")
+		cm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		cm.extra_cull_margin = 2.0
+		add_child(cm)
 	villagers = Villagers.new()
 	villagers.name = "Villagers"
 	add_child(villagers)
@@ -309,36 +318,88 @@ func _fence(mb: MeshBuilder, a: Vector2, b: Vector2) -> void:
 				_box(mb, Vector3(m.x, my + rh, m.y), Vector3(0.04, 0.05, p.distance_to(q) * 0.5), rot, wood)
 
 
-## Crop rows: low ridges that follow the ground and catch snow on top.
+## Crops in rows. Each plant carries its base point so the crop shader can
+## grow it, sway it and make it wilt where the snow lands.
+const CROPS := {
+	"wheat": {"row": 0.75, "step": 0.45, "color": Color(0.88, 0.74, 0.34)},
+	"corn": {"row": 1.1, "step": 0.8, "color": Color(0.52, 0.66, 0.26)},
+	"greens": {"row": 0.9, "step": 0.7, "color": Color(0.42, 0.66, 0.30)},
+	"sprouts": {"row": 0.8, "step": 0.5, "color": Color(0.40, 0.68, 0.28)},
+}
+
+
 func _field(mb: MeshBuilder, f: Dictionary) -> void:
 	var crop: String = f["crop"]
-	if crop == "pasture":
+	if not CROPS.has(crop):
 		return
+	var spec: Dictionary = CROPS[crop]
 	var c: Vector2 = f["center"]
-	var size: Vector2 = f["size"]
+	var size: Vector2 = f["size"] - Vector2(1.5, 1.5)
 	var rot: float = f["rot"]
-	var col: Color = {"wheat": Color(0.86, 0.74, 0.36, 0.5), "furrow": Color(0.40, 0.29, 0.18, 0.5),
-		"greens": Color(0.30, 0.55, 0.20, 0.5)}[crop]
-	var height: float = {"wheat": 0.55, "furrow": 0.18, "greens": 0.3}[crop]
-	var spacing := 1.6
-	var rows := int(size.x / spacing)
 	var tr := Transform2D(-rot, c)
+	var rows := int(size.x / float(spec["row"]))
+	var per := int(size.y / float(spec["step"]))
 	for k in rows:
-		var x := -size.x * 0.5 + (k + 0.5) * spacing
-		var steps := int(size.y / 2.0)
-		for sidx in steps:
-			var z0 := -size.y * 0.5 + sidx * 2.0
-			var z1 := z0 + 2.0
-			var p0: Vector2 = tr * Vector2(x, z0)
-			var p1: Vector2 = tr * Vector2(x, z1)
-			var y0 := _ground(p0)
-			var y1 := _ground(p1)
-			var side: Vector2 = (tr.basis_xform(Vector2(1, 0))).normalized() * 0.45
-			var a0 := Vector3(p0.x - side.x, y0 - 0.05, p0.y - side.y)
-			var a1 := Vector3(p1.x - side.x, y1 - 0.05, p1.y - side.y)
-			var b0 := Vector3(p0.x + side.x, y0 - 0.05, p0.y + side.y)
-			var b1 := Vector3(p1.x + side.x, y1 - 0.05, p1.y + side.y)
-			var t0 := Vector3(p0.x, y0 + height, p0.y)
-			var t1 := Vector3(p1.x, y1 + height, p1.y)
-			_quad(mb, a0, a1, t1, t0, col, Vector3(-side.x, 0.6, -side.y).normalized())
-			_quad(mb, b0, t0, t1, b1, col, Vector3(side.x, 0.6, side.y).normalized())
+		var x := -size.x * 0.5 + (k + 0.5) * float(spec["row"])
+		for j in per:
+			var z := -size.y * 0.5 + (j + 0.5) * float(spec["step"]) + _rng.randf_range(-0.1, 0.1)
+			var p: Vector2 = tr * Vector2(x + _rng.randf_range(-0.08, 0.08), z)
+			_plant(mb, crop, p, _ground(p) - 0.03, spec["color"])
+
+
+func _blade(mb: MeshBuilder, base: Vector3, tip: Vector3, half_w: float, side: Vector3, col: Color,
+		p: Vector2, phase: float, t0: float = 0.0, t1: float = 1.0) -> void:
+	var a := base - side * half_w
+	var b := base + side * half_w
+	var c0 := Color(col.r, col.g, col.b, t0)
+	var c1 := Color(col.r, col.g, col.b, t1)
+	for v in [[a, c0], [b, c0], [tip, c1]]:
+		mb.add_vertex(v[0], Vector3.UP, v[1], p)
+		mb.uv2s.append(Vector2(phase, base.y if t0 == 0.0 else 0.0))
+	var i := mb.vertex_count() - 3
+	mb.add_tri_idx(i, i + 1, i + 2)
+
+
+func _plant(mb: MeshBuilder, crop: String, p: Vector2, y: float, col: Color) -> void:
+	var phase := _rng.randf()
+	var root := Vector3(p.x, y, p.y)
+	var yaw := _rng.randf() * TAU
+	var start := mb.vertex_count()
+	match crop:
+		"wheat":
+			for k in 3:
+				var a := yaw + k * 2.1
+				var lean := Vector3(cos(a), 0, sin(a)) * 0.12
+				var h := _rng.randf_range(0.8, 1.05)
+				_blade(mb, root, root + lean + Vector3(0, h, 0), 0.035, Vector3(-sin(a), 0, cos(a)), col, p, phase)
+				# Ear of grain near the top.
+				_blade(mb, root + lean * 0.8 + Vector3(0, h * 0.78, 0), root + lean * 1.1 + Vector3(0, h * 1.02, 0), 0.06,
+					Vector3(-sin(a), 0, cos(a)), col.lightened(0.1), p, phase, 0.78, 1.0)
+		"corn":
+			var h := _rng.randf_range(1.5, 1.9)
+			for k in 2:
+				var a := yaw + k * PI * 0.5
+				_blade(mb, root, root + Vector3(0, h, 0), 0.06, Vector3(cos(a), 0, sin(a)), col, p, phase)
+			for k in 3:
+				var a := yaw + k * 2.2
+				var out := Vector3(cos(a), 0, sin(a))
+				_blade(mb, root + Vector3(0, h * (0.3 + k * 0.18), 0), root + out * 0.55 + Vector3(0, h * (0.45 + k * 0.18), 0), 0.07,
+					out.cross(Vector3.UP).normalized(), col.darkened(0.1), p, phase, 0.3 + k * 0.18, 0.5 + k * 0.18)
+			_blade(mb, root + Vector3(0, h * 0.95, 0), root + Vector3(0, h * 1.15, 0), 0.05, Vector3(cos(yaw), 0, sin(yaw)),
+				Color(0.86, 0.76, 0.42), p, phase, 0.95, 1.0)
+		"greens":
+			# A round head of leaves.
+			for k in 5:
+				var a := yaw + k * TAU / 5.0
+				var out := Vector3(cos(a), 0, sin(a))
+				_blade(mb, root + out * 0.05, root + out * 0.3 + Vector3(0, 0.32, 0), 0.16, out.cross(Vector3.UP).normalized(),
+					col, p, phase)
+			_blade(mb, root, root + Vector3(0, 0.38, 0), 0.14, Vector3(cos(yaw), 0, sin(yaw)), col.lightened(0.15), p, phase)
+		"sprouts":
+			for k in 2:
+				var a := yaw + k * PI
+				var out := Vector3(cos(a), 0, sin(a))
+				_blade(mb, root, root + out * 0.12 + Vector3(0, 0.28, 0), 0.05, out.cross(Vector3.UP).normalized(), col, p, phase)
+	# Every vertex of a plant shares its base height (for the shader's growth).
+	for i in range(start, mb.vertex_count()):
+		mb.uv2s[i] = Vector2(phase, y)

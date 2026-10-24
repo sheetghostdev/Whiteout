@@ -84,23 +84,39 @@ func run(t, _full: bool) -> void:
 	t.approx(c4.total_sum, c5.total_sum, 0.5, "interleaved large-storm updates match full updates")
 
 	# Searches.
-	# Drifting snow closes slivers between passes but never eats open ground.
+	# Drifting snow seals narrow gaps between passes but never eats open ground.
 	var dr := SnowCoverage.new()
 	dr.setup(terrain)
-	dr.apply_sweep(-40, 60, 40, 60, 4.0, 1.0, 0.98)
-	dr.apply_sweep(-40, 69.6, 40, 69.6, 4.0, 1.0, 0.98)
-	var bare := dr.get_coverage(0, 64.8)
-	for k in 6:
-		dr.drift_fill(64)
-	t.check(bare == 0.0 and dr.get_coverage(0, 64.8) == 0.0, "a real 2 m gap with no snow is left for you to fly over")
-	# A 1 m line missed between two passes closes up by itself.
-	dr.apply_sweep(-40, 70.0, 40, 70.0, 5.0, 1.0, 0.98)
-	var sliver := dr.get_coverage(0, 64.8)
-	for k in 6:
-		dr.drift_fill(64)
-	t.check(sliver < 1.0 and dr.get_coverage(0, 64.8) == 1.0, "a 1 m sliver between two passes fills itself in (%.2f)" % dr.get_coverage(0, 64.8))
-	t.check(dr.get_coverage(0, 76.0) == 0.0, "open green ground beside a pass stays green")
+	# Two passes leaving a 2 m gap (rows 64-65) and, further on, a 5 m gap.
+	dr.apply_sweep(-40, 60, 40, 60, 4.0, 1.0, 1.0)
+	dr.apply_sweep(-40, 70, 40, 70, 4.0, 1.0, 1.0)
+	dr.apply_sweep(-40, 83, 40, 83, 4.0, 1.0, 1.0)
+	var narrow := dr.get_coverage(0, 64.5)
+	var wide := dr.get_coverage(0, 76.5)
+	for k in 8:
+		dr.drift_fill(256)
+	t.check(narrow == 0.0 and dr.get_coverage(0, 64.5) == 1.0 and dr.get_coverage(0, 65.5) == 1.0,
+		"a 2 m gap between two passes seals itself")
+	t.check(wide == 0.0 and dr.get_coverage(0, 76.5) == 0.0, "a 5 m gap is left for you to fly over")
+	t.check(dr.get_coverage(0, 90.0) == 0.0 and dr.get_coverage(0, 54.0) == 0.0, "open green ground beside a pass stays green")
 	_consistency(t, dr, "after drift fill")
+	# Deep Freeze bridges wider gaps.
+	dr.gap_reach = 4
+	dr.fill_dirty.fill(1)
+	for k in 12:
+		dr.drift_fill(256)
+	t.check(dr.get_coverage(0, 76.5) == 1.0, "Deep Freeze seals a 5 m gap too")
+	t.check(dr.get_coverage(0, 92.0) == 0.0, "even Deep Freeze leaves open ground alone")
+	# A pass at full strength leaves no half-frozen ground at its edges.
+	var edge := SnowCoverage.new()
+	edge.setup(terrain)
+	edge.apply_sweep(-40, 60, 40, 60, 4.0, 1.0, 1.0)
+	var partial := 0
+	for z in range(50, 71):
+		var v := edge.get_coverage(0, z + 0.5)
+		if v > 0.0 and v < 1.0:
+			partial += 1
+	t.check(partial == 0, "a pass leaves either frozen or untouched ground, nothing in between")
 
 	var cov6 := SnowCoverage.new()
 	cov6.setup(terrain)

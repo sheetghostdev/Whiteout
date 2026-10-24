@@ -134,6 +134,13 @@ func _build() -> void:
 	_toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_toasts)
 
+	# Compass to the nearest green ground, shown when none is close by.
+	_compass = Control.new()
+	UIKit.full_rect(_compass)
+	_compass.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_compass.draw.connect(_draw_compass)
+	add_child(_compass)
+
 	_hints = UIKit.label("", 14, Color(0.85, 0.92, 1.0, 0.75))
 	UIKit.place(_hints, 0, 1, 0, 1, 20, -34, 900, -10)
 	add_child(_hints)
@@ -233,6 +240,13 @@ func _process(delta: float) -> void:
 	_fps.visible = Settings.show_fps
 	if _fps.visible:
 		_fps.text = "%d FPS" % Engine.get_frames_per_second()
+	_green_timer -= delta
+	if _green_timer <= 0.0:
+		_green_timer = 0.5
+		var c := Game.weather.cloud
+		var cov := Game.coverage()
+		_green = cov.find_nearest_unfrozen_area(c.pos, 1.0e9, 1) if c != null and cov != null else Vector2.INF
+	_compass.queue_redraw()
 	_ready_timer -= delta
 	if _ready_timer <= 0.0:
 		_ready_timer = 0.5
@@ -243,6 +257,9 @@ func _process(delta: float) -> void:
 
 var _last_frost := -1.0
 var _ready_timer := 0.0
+var _compass: Control
+var _green := Vector2.INF
+var _green_timer := 0.0
 
 
 func _on_frost(v: float) -> void:
@@ -330,3 +347,46 @@ func toast(title: String, subtitle: String, kind: String) -> void:
 	tw.tween_interval(4.5)
 	tw.tween_property(p, "modulate:a", 0.0, 0.6)
 	tw.tween_callback(p.queue_free)
+
+
+## Points at the nearest green ground once you are surrounded by snow, so no
+## forgotten patch is ever hard to find.
+func _draw_compass() -> void:
+	var c := Game.weather.cloud if Game.weather != null else null
+	var cam := get_viewport().get_camera_3d()
+	if c == null or cam == null or _green == Vector2.INF:
+		return
+	var dist := c.pos.distance_to(_green)
+	var near := c.snow_width() * 2.5 + 6.0
+	if dist < near:
+		return
+	var alpha := clampf((dist - near) / 15.0, 0.0, 1.0) * 0.9
+	var world := Vector3(_green.x, Game.world.terrain.surface_height(_green.x, _green.y) + 1.0, _green.y)
+	var size := get_viewport_rect().size
+	var col := Color(1.0, 0.78, 0.42, alpha)
+	var txt := "Green ground  %d m" % int(dist)
+	var font := ThemeDB.fallback_font
+	if not cam.is_position_behind(world):
+		var sp := cam.unproject_position(world)
+		if Rect2(Vector2(40, 40), size - Vector2(80, 80)).has_point(sp):
+			# On screen: a small marker hovering over the patch.
+			var pulse := 1.0 + 0.15 * sin(Time.get_ticks_msec() * 0.006)
+			_compass.draw_arc(sp, 14.0 * pulse, 0, TAU, 28, col, 2.5, true)
+			_compass.draw_circle(sp, 3.0, col)
+			_compass.draw_string(font, sp + Vector2(18, 5), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, col)
+			return
+	# Off screen: an arrow on a ring around the middle of the screen, pointing
+	# the way the patch lies (projected, so it matches what you see).
+	var center := size * 0.5
+	var sp2 := cam.unproject_position(world)
+	if cam.is_position_behind(world):
+		sp2 = center - (sp2 - center) * 4.0
+	var dir := (sp2 - center).normalized()
+	if dir == Vector2.ZERO:
+		dir = Vector2.UP
+	var rad := minf(size.x, size.y) * 0.36
+	var tip := center + dir * rad
+	var side := Vector2(-dir.y, dir.x)
+	var pts := PackedVector2Array([tip + dir * 16.0, tip - dir * 6.0 + side * 11.0, tip - dir * 6.0 - side * 11.0])
+	_compass.draw_colored_polygon(pts, col)
+	_compass.draw_string(font, tip - dir * 10.0 + Vector2(-100, 32), txt, HORIZONTAL_ALIGNMENT_CENTER, 200, 13, col)

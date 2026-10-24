@@ -22,12 +22,14 @@ var _y := 0.0
 var _built_r := 0.0
 
 
-func make_wake(at: Vector2, r: float, p_rate: float, p_life: float) -> void:
+## Wake flurries drift slowly off to one side of your path, freezing a
+## strip as they go, which widens your trail behind you.
+func make_wake(at: Vector2, r: float, drift: Vector2, p_life: float) -> void:
 	kind = "snow_cloud"
 	mode = "wake"
 	pos = at
 	radius = r
-	rate = p_rate
+	vel = drift
 	life = p_life
 
 
@@ -56,15 +58,13 @@ func sim_step(dt: float) -> void:
 		_cloudlet_motion(dt)
 	var gain := 0.0
 	if mode == "wake":
-		# Wake flurries hang where you passed and keep snowing for a while.
-		gain = cov.apply_disc(pos.x, pos.y, radius, rate * dt, 1, 0, 0.4)
-	else:
-		# Cloudlets lay snow along their path, like you do.
-		if _snow_from == Vector2.INF:
-			_snow_from = pos
-		if _snow_from.distance_to(pos) > 0.05:
-			gain = cov.apply_sweep(_snow_from.x, _snow_from.y, pos.x, pos.y, radius, rate, manager.prog.stat("core"))
-			_snow_from = pos
+		pos += vel * dt
+	# Small clouds lay snow along their path, like you do: one pass freezes.
+	if _snow_from == Vector2.INF:
+		_snow_from = pos
+	if _snow_from.distance_to(pos) > 0.05:
+		gain = cov.apply_sweep(_snow_from.x, _snow_from.y, pos.x, pos.y, radius, 1.0, 1.0)
+		_snow_from = pos
 	new_cov += cov.last_cov_delta
 	manager.add_gain(gain, cov.last_cov_delta, self)
 	if age >= life:
@@ -78,7 +78,7 @@ func _cloudlet_motion(dt: float) -> void:
 		return
 	var prog := manager.prog
 	radius = host.base_radius() * prog.stat("comp_size")
-	rate = host.rate * 0.4
+	rate = 1.0
 	var count := maxi(int(prog.stat("companions")), 1)
 	var ring := host.radius + radius * 1.2
 	# The orbit turns with your travel, so resting clouds rest too.
@@ -152,7 +152,8 @@ func visual_update(delta: float, t: float) -> void:
 	if absf(radius - _built_r) > _built_r * 0.3:
 		_build_snow()
 	var p := interp_pos(t)
-	_y = lerpf(_y, sim_height(p) + altitude(), 1.0 - exp(-delta * 2.0))
+	var floor_y := maxf(sim_height(p) + altitude(), manager.terrain.obstacle_height(p.x, p.y) + radius * 0.6 + 1.0)
+	_y = lerpf(_y, floor_y, 1.0 - exp(-delta * 2.0))
 	global_position = Vector3(p.x, _y, p.y)
 	_cloud.rotation.y += delta * 0.08
 	var f := vis
