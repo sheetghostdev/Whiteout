@@ -6,11 +6,10 @@ extends WeatherEffect
 ## is applied every third tick as a sweep along the path flown since the last
 ## snowfall, so each pass lays an even layer and hovering lays nothing.
 ##
-## Input is plain data (move_input, dashing) so the balance bot can fly the
+## Input is plain data (move_input) so the balance bot can fly the
 ## cloud headlessly exactly like a player.
 
 var move_input := Vector2.ZERO   # world-space wish direction, length 0..1
-var dashing := false
 var altitude_offset := 0.0
 var distance := 0.0
 var _wake_acc := 0.0
@@ -34,6 +33,7 @@ var _mats: Array[ShaderMaterial] = []
 var _snow: GPUParticles3D
 var _snow_mat: ParticleProcessMaterial
 var _shadow: MeshInstance3D
+var _ring: MeshInstance3D
 var _spiral: MeshInstance3D
 var _spiral_mat: ShaderMaterial
 var _built_r := 0.0
@@ -54,7 +54,11 @@ func base_radius() -> float:
 
 func max_speed() -> float:
 	var p := manager.prog
-	return p.stat("speed") * (p.stat("dash") if dashing else 1.0)
+	var s := p.stat("speed")
+	# Tailwind: fast over finished ground, so reaching fresh green is quick.
+	if p.has("tailwind") and manager.cov.get_coverage(pos.x, pos.y) >= 1.0:
+		s *= 1.5
+	return s
 
 
 ## 0..1 how far into Vortex Form the cloud is (eases in and out).
@@ -112,9 +116,6 @@ func sim_step(dt: float) -> void:
 func snow_width() -> float:
 	var prog := manager.prog
 	var w := radius * prog.stat("rate")
-	# Gusting narrows the trail, unless Tailwind keeps it wide.
-	if dashing and not prog.has("tailwind"):
-		w *= 0.7
 	if high_ground:
 		w *= 1.3
 	return w
@@ -239,6 +240,10 @@ func setup_visuals() -> void:
 	_shadow = WeatherFX.decal(3, Color(0.5, 0.64, 0.92, 0.28))
 	_shadow.top_level = true
 	add_child(_shadow)
+	# A clear ring on the ground marks exactly where your snow will fall.
+	_ring = WeatherFX.decal(1, Color(0.92, 0.97, 1.0, 0.85))
+	_ring.top_level = true
+	add_child(_ring)
 	_y = sim_height(pos) + altitude()
 	_build_snow()
 	global_position = Vector3(pos.x, _y, pos.y)
@@ -278,7 +283,7 @@ func visual_update(delta: float, t: float) -> void:
 	var p := interp_pos(t)
 	_bob += delta
 	var target_y := _clearance(p) + altitude() + altitude_offset
-	_y = lerpf(_y, target_y, 1.0 - exp(-delta * 2.5))
+	_y = lerpf(_y, target_y, 1.0 - exp(-delta * 1.6))
 	global_position = Vector3(p.x, _y + sin(_bob * 1.3) * 0.25, p.y)
 	# Puffs breathe gently; the cloud leans into its motion and stretches a
 	# little when it moves fast.
@@ -304,6 +309,12 @@ func visual_update(delta: float, t: float) -> void:
 	_shadow.global_position = Vector3(p.x, 0.0, p.y)
 	_shadow.scale = Vector3(radius, 1.0, radius)
 	(_shadow.material_override as ShaderMaterial).set_shader_parameter("intensity", f)
+	var w := snow_width()
+	_ring.global_position = Vector3(p.x, 0.0, p.y)
+	_ring.scale = Vector3(w, 1.0, w)
+	var rm := _ring.material_override as ShaderMaterial
+	rm.set_shader_parameter("ring_width", clampf(0.45 / maxf(w, 0.5), 0.01, 0.3))
+	rm.set_shader_parameter("intensity", f * (1.0 if Settings.show_snow_ring else 0.0))
 	var va := vortex_amount()
 	_spiral.visible = va > 0.01
 	if _spiral.visible:

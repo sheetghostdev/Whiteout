@@ -7,6 +7,7 @@ render_mode diffuse_lambert_wrap, specular_schlick_ggx;
 #include "res://shaders/common.gdshaderinc"
 
 uniform bool per_vertex_snow = false;   // rocks sample under each vertex
+uniform bool per_pixel_snow = false;    // buildings: snow follows the ground under every pixel
 uniform float sway_amount = 1.0;
 uniform bool merged = false;            // far LOD: origin in UV2, hue in UV.x
 
@@ -57,6 +58,9 @@ void fragment() {
 	}
 	float up = wnorm.y;
 	float s = snow_amt;
+	if (per_pixel_snow) {
+		s = wo_snow_mask(wo_cov_warped(wpos.xz), wpos.xz);
+	}
 	vec3 snow = mix(wo_lin(vec3(0.80, 0.87, 0.97)), wo_lin(vec3(0.97, 0.98, 1.0)), clamp(up, 0.0, 1.0));
 	float cover;
 	if (mat > 0.75) {

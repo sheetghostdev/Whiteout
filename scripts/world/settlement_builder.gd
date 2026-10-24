@@ -12,16 +12,29 @@ const ROOFS: Array[Color] = [Color(0.66, 0.30, 0.20), Color(0.30, 0.32, 0.38), C
 var terrain: TerrainData
 var plan: SettlementPlan
 var villagers: Villagers
+var coverage: SnowCoverage
 var _mat: ShaderMaterial
+var _crop_mat: ShaderMaterial
+# Crop withering: each field cell ages once it is frozen, over WITHER_TIME.
+const WITHER_TIME := 150.0
+var _wither_origin := Vector2i.ZERO
+var _wither_size := Vector2i.ONE
+var _wither := PackedFloat32Array()
+var _wither_cells := PackedInt32Array()   # coverage index per wither texel (-1 if not a field)
+var _wither_img: Image
+var _wither_tex: ImageTexture
+var _wither_timer := 0.0
 var _rng := RandomNumberGenerator.new()
 
 
-func build(t: TerrainData, coverage: SnowCoverage) -> void:
+func build(t: TerrainData, p_coverage: SnowCoverage) -> void:
 	terrain = t
+	coverage = p_coverage
 	plan = t.settlements
 	_rng.seed = t.seed_value * 13 + 3
 	_mat = ShaderLib.material("tree")
 	_mat.set_shader_parameter("per_vertex_snow", true)
+	_mat.set_shader_parameter("per_pixel_snow", true)
 	_mat.set_shader_parameter("sway_amount", 0.0)
 	var mb := MeshBuilder.new()
 	for b in plan.buildings:
@@ -42,14 +55,83 @@ func build(t: TerrainData, coverage: SnowCoverage) -> void:
 		var cm := MeshInstance3D.new()
 		cm.name = "Crops"
 		cm.mesh = crops.commit()
-		cm.material_override = ShaderLib.material("crops")
+		_crop_mat = ShaderLib.material("crops")
+		_setup_wither()
+		cm.material_override = _crop_mat
 		cm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		cm.extra_cull_margin = 2.0
 		add_child(cm)
 	villagers = Villagers.new()
 	villagers.name = "Villagers"
 	add_child(villagers)
-	villagers.setup(t, coverage, plan)
+	villagers.setup(t, p_coverage, plan)
+
+
+# ------------------------------------------------------------ withering
+func _setup_wither() -> void:
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for f in plan.fields:
+		var c: Vector2 = f["center"]
+		var r: float = (f["size"] as Vector2).length() * 0.5 + 2.0
+		lo = lo.min(c - Vector2(r, r))
+		hi = hi.max(c + Vector2(r, r))
+	_wither_origin = Vector2i(int(floor(lo.x + TerrainData.HALF)), int(floor(lo.y + TerrainData.HALF)))
+	_wither_size = Vector2i(int(ceil(hi.x - lo.x)), int(ceil(hi.y - lo.y)))
+	var n := _wither_size.x * _wither_size.y
+	_wither.resize(n)
+	_wither.fill(0.0)
+	_wither_cells.resize(n)
+	for j in _wither_size.y:
+		for i in _wither_size.x:
+			var ci := _wither_origin.x + i
+			var cj := _wither_origin.y + j
+			var idx := -1
+			if ci >= 0 and cj >= 0 and ci < TerrainData.N and cj < TerrainData.N and terrain.cell_built[cj * TerrainData.N + ci] == 2:
+				idx = cj * TerrainData.N + ci
+			_wither_cells[j * _wither_size.x + i] = idx
+	_wither_img = Image.create(_wither_size.x, _wither_size.y, false, Image.FORMAT_R8)
+	_wither_tex = ImageTexture.create_from_image(_wither_img)
+	_crop_mat.set_shader_parameter("wither_tex", _wither_tex)
+	_crop_mat.set_shader_parameter("wither_rect", Vector4(_wither_origin.x - TerrainData.HALF, _wither_origin.y - TerrainData.HALF,
+		_wither_size.x, _wither_size.y))
+
+
+## New winter: fresh crops. Loaded game: crops already under snow are dead.
+func reset_crops(already_frozen_dead: bool) -> void:
+	for k in _wither.size():
+		var idx := _wither_cells[k]
+		_wither[k] = 1.0 if already_frozen_dead and idx >= 0 and coverage.cov[idx] >= 1.0 else 0.0
+	_upload_wither()
+
+
+func _process(delta: float) -> void:
+	if _crop_mat == null or coverage == null:
+		return
+	_wither_timer += delta
+	if _wither_timer < 0.5:
+		return
+	var step := _wither_timer / WITHER_TIME
+	_wither_timer = 0.0
+	var changed := false
+	for k in _wither.size():
+		var idx := _wither_cells[k]
+		if idx < 0 or _wither[k] >= 1.0:
+			continue
+		if coverage.cov[idx] >= 1.0:
+			_wither[k] = minf(_wither[k] + step, 1.0)
+			changed = true
+	if changed:
+		_upload_wither()
+
+
+func _upload_wither() -> void:
+	var bytes := PackedByteArray()
+	bytes.resize(_wither.size())
+	for k in _wither.size():
+		bytes[k] = int(_wither[k] * 255.0)
+	_wither_img.set_data(_wither_size.x, _wither_size.y, false, Image.FORMAT_R8, bytes)
+	_wither_tex.update(_wither_img)
 
 
 # ---------------------------------------------------------------- helpers

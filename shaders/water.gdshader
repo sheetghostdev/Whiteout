@@ -49,9 +49,18 @@ void fragment() {
 	float depth = max(wpos.y - ground, 0.0);
 
 	// ---- liquid water
-	vec2 flow = vflow * TIME * 0.6;
-	float n1 = wo_noise(xz * 0.45 + vec2(TIME * 0.12, TIME * 0.07) - flow);
-	float n2 = wo_noise(xz * 0.9 - vec2(TIME * 0.09, -TIME * 0.11) - flow * 1.3);
+	// Flow-map scrolling: two phases offset by half a cycle cross-fade, so
+	// the ripples follow the current without stretching or tearing.
+	float ph0 = fract(TIME * 0.25);
+	float ph1 = fract(TIME * 0.25 + 0.5);
+	float wgt = abs(ph0 - 0.5) * 2.0;
+	vec2 drift = vec2(TIME * 0.12, TIME * 0.07);
+	float n1a = wo_rnoise(xz * 0.45 + drift - vflow * ph0 * 2.4);
+	float n1b = wo_rnoise(xz * 0.45 + drift - vflow * ph1 * 2.4 + 0.37);
+	float n2a = wo_rnoise(xz * 0.9 - drift.yx - vflow * ph0 * 3.1);
+	float n2b = wo_rnoise(xz * 0.9 - drift.yx - vflow * ph1 * 3.1 + 0.61);
+	float n1 = mix(n1a, n1b, wgt);
+	float n2 = mix(n2a, n2b, wgt);
 	vec3 wn = normalize(vec3((n1 - 0.5) * 0.35, 1.0, (n2 - 0.5) * 0.35));
 	vec3 vw = normalize((INV_VIEW_MATRIX * vec4(VIEW, 0.0)).xyz);
 	float fres = pow(1.0 - clamp(dot(vw, wn), 0.0, 1.0), 4.0);
@@ -62,10 +71,9 @@ void fragment() {
 	float water_alpha = mix(0.55, 0.92, smoothstep(0.1, 2.5, depth));
 
 	// ---- ice
-	float c = open_sea ? 0.0 : wo_cov_smooth(xz);
-	float n = wo_fbm(xz * 0.3) * 0.7 + wo_noise(xz * 1.7) * 0.3;
-	float s = clamp((c - 0.02) / 0.95, 0.0, 1.0);
-	float ice = smoothstep(n * 0.88, n * 0.88 + 0.1, s);
+	float c = open_sea ? 0.0 : wo_cov_warped(xz);
+	// Ice fades in softly at its edge instead of along a hard noisy line.
+	float ice = wo_snow_mask(c, xz);
 	float crack = ice_cracks(xz * 0.35);
 	vec3 icec = ice_color * (0.92 + 0.12 * wo_fbm(xz * 0.8));
 	icec = mix(icec * 0.82, icec, crack);

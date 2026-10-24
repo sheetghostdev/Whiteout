@@ -33,6 +33,8 @@ func _ready() -> void:
 			await _island()
 		"round3":
 			await _round3()
+		"round4":
+			await _round4()
 	get_tree().quit()
 
 
@@ -75,14 +77,12 @@ func _ground(x: float, z: float) -> Vector3:
 	return Vector3(x, Game.world.terrain.surface_height(x, z), z)
 
 
-func _fly(dir: Vector2, seconds: float, dash: bool = false) -> void:
+func _fly(dir: Vector2, seconds: float) -> void:
 	Game.player.autopilot = true
 	var c := _cloud()
 	c.move_input = dir
-	c.dashing = dash
 	await _sleep(seconds)
 	c.move_input = Vector2.ZERO
-	c.dashing = false
 	Game.player.autopilot = false
 
 
@@ -360,6 +360,7 @@ func _round3() -> void:
 	await _sleep(1.0)
 	await _shot("75_trail_low")
 	# The compass points to the last green ground.
+	Game.prog.levels["snow_compass"] = 1
 	for k in 3:
 		cov.apply_disc(0, 0, 400.0, 1.0)
 	cov.apply_disc(-140, -20, 6.0, -1.0)
@@ -373,3 +374,55 @@ func _round3() -> void:
 	await _view(60, 60, 0, -25, 1.2, "76_compass", 2.0)
 	await _view(60, 60, 180, -25, 1.2, "76b_compass_behind", 2.0)
 	await _view(-120, 10, 90, -30, 1.2, "77_last_green", 2.0)
+
+
+func _round4() -> void:
+	Game.start_new_game()
+	await _frames(10)
+	var cov := Game.world.coverage
+	# A real flown trail, low and close, with the snowfall ring showing.
+	_cloud().pos = Vector2(-40, 60)
+	await _sleep(0.5)
+	_look(30, -24, 0.8)
+	await _fly(Vector2(0.8, 0.6).normalized(), 5.0)
+	await _fly(Vector2(-0.6, 0.8).normalized(), 3.0)
+	await _sleep(1.0)
+	await _shot("80_trail_ring")
+	# Crops frost over at once, then wither slowly.
+	var sb: SettlementBuilder = Game.world.settlements
+	cov.apply_sweep(-150, 100, -100, 150, 9.0, 1.0, 1.0)
+	cov.update_texture()
+	await _view(-110, 104, 160, -24, 0.9, "81_crops_frosted", 2.0)
+	for k in sb._wither.size():
+		if sb._wither_cells[k] >= 0 and cov.cov[sb._wither_cells[k]] >= 1.0:
+			sb._wither[k] = 0.5
+	sb._upload_wither()
+	await _view(-110, 104, 160, -24, 0.9, "82_crops_half", 1.0)
+	for k in sb._wither.size():
+		if sb._wither_cells[k] >= 0 and cov.cov[sb._wither_cells[k]] >= 1.0:
+			sb._wither[k] = 1.0
+	sb._upload_wither()
+	await _view(-110, 104, 160, -24, 0.9, "83_crops_dead", 1.0)
+	# Snow covering only the front of a roof.
+	var house: Dictionary = Game.world.terrain.settlements.buildings[2]
+	var hp: Vector2 = house["pos"]
+	cov.apply_disc(hp.x - 6.0, hp.y + 4.0, 5.0, 1.0, 1, 0, 1.0)
+	cov.update_texture()
+	await _view(hp.x - 14.0, hp.y + 14.0, 225, -20, 0.8, "84_roof_partial", 2.0)
+	# Water: lake outlet, river mouth, the stream entering the lake.
+	await _view(150, 40, 200, -30, 1.3, "85_outlet", 2.0)
+	await _view(176, 196, 210, -26, 1.3, "86_mouth", 2.0)
+	await _view(118, -30, 140, -30, 1.3, "87_lake_inflow", 2.0)
+	# Everything frozen: the snow reaches the waterline on the beach.
+	for k in 3:
+		cov.apply_disc(0, 0, 400.0, 1.0)
+	cov.update_texture()
+	await _view(176, 196, 210, -26, 1.3, "88_mouth_frozen", 2.0)
+	var t: TerrainData = Game.world.terrain
+	var beach := Vector2(0, 0)
+	for k in 260:
+		var q := Vector2(-40.0, 0.0 + k)
+		if t.sample_height(q.x, q.y) < TerrainData.SEA_LEVEL:
+			beach = q - Vector2(0, 12)
+			break
+	await _view(beach.x, beach.y, 180, -26, 1.1, "89_beach_frozen", 2.0)

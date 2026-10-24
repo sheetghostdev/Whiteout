@@ -33,7 +33,8 @@ void fragment() {
 
 	// ---- snow
 	float c = wo_cov_warped(xz);
-	float m = wo_snow_mask(c, xz);
+	// Snow reaches the waterline but not the sea floor seen through the water.
+	float m = wo_snow_mask(c, xz) * smoothstep(-0.9, -0.15, wpos.y);
 	vec3 snow = wo_snow_color(wn, xz);
 	// Soft, irregular drift undulations tilt the snow normal very slightly.
 	float rx = wo_rfbm(xz * 0.12 + vec2(0.6, 0.0)) - wo_rfbm(xz * 0.12 - vec2(0.6, 0.0));

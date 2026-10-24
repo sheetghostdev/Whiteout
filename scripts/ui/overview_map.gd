@@ -76,7 +76,9 @@ func build_relief(terrain: TerrainData, colors: PackedColorArray) -> void:
 			elif terrain.cell_built[j * n + i] == 1 and terrain.settlements.building_at(Vector2(i - 256.0 + 0.5, j - 256.0 + 0.5), 0.0):
 				c = Color(0.55, 0.30, 0.24)
 				shade = 1.0
-			img.set_pixel(i, j, Color(c.r * shade, c.g * shade, c.b * shade, clampf(shade - 0.2, 0.0, 1.0)))
+			# Alpha 0 marks the sea, which the map never paints white.
+			var a := 0.0 if terrain.cell_ocean[j * n + i] == 1 else clampf(shade - 0.2, 0.05, 1.0)
+			img.set_pixel(i, j, Color(c.r * shade, c.g * shade, c.b * shade, a))
 	_relief = ImageTexture.create_from_image(img)
 	_map.texture = _relief
 	(_map.material as ShaderMaterial).set_shader_parameter("relief", _relief)

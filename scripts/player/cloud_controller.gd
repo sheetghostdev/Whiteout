@@ -1,7 +1,7 @@
 class_name CloudController
 extends Node3D
 ## Third-person rig for the player's cloud. WASD drifts relative to where the
-## camera faces, the mouse orbits the camera, Shift rides a gust, the wheel
+## camera faces, the mouse orbits the camera, the wheel
 ## zooms. Skills fire from here. The node follows the cloud so anything that
 ## asks for the "player position" gets the cloud.
 
@@ -99,10 +99,8 @@ func _physics_process(_delta: float) -> void:
 	if input_enabled:
 		var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 		c.move_input = Vector2(input.x, input.y).rotated(-yaw)
-		c.dashing = Input.is_action_pressed("dash") and input.length() > 0.1
 	else:
 		c.move_input = Vector2.ZERO
-		c.dashing = false
 
 
 func _target_dist() -> float:

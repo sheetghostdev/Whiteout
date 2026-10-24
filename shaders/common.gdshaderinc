@@ -106,7 +106,7 @@ float wo_cov_warped(vec2 xz) {
 	vec2 broad = vec2(wo_rfbm(xz * 0.05), wo_rfbm(xz * 0.05 + 47.3)) - 0.5;
 	vec2 mid = vec2(wo_rfbm(xz * 0.16 + 9.1), wo_rfbm(xz * 0.16 + 21.7)) - 0.5;
 	vec2 fine = vec2(wo_rnoise(xz * 0.5), wo_rnoise(xz * 0.5 + 31.7)) - 0.5;
-	return wo_cov_smooth(xz + broad * 7.0 + mid * 2.6 + fine * 1.0);
+	return wo_cov_smooth(xz + broad * 2.8 + mid * 1.4 + fine * 0.7);
 }
 
 // Maps coverage 0..1 to a visible snow mask with natural patchy accumulation.

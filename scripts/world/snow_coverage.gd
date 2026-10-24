@@ -680,7 +680,9 @@ func update_texture() -> bool:
 		for z in range(bz, bz + CS):
 			var row := z * N
 			for x in range(bx, bx + CS):
-				tex_bytes[row + x] = 0 if void_cells[row + x] == 1 else int(cov[row + x] * 255.0)
+				# Sea cells read as frozen for the ground shaders, so snow reaches
+				# right to the waterline; the sea's own shader never freezes.
+				tex_bytes[row + x] = 255 if void_cells[row + x] == 1 else int(cov[row + x] * 255.0)
 	any_dirty = false
 	image.set_data(N, N, false, Image.FORMAT_R8, tex_bytes)
 	texture.update(image)

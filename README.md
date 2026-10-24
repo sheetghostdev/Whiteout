@@ -26,7 +26,6 @@ screen over a flyover of your world.
 | WASD | Drift (relative to the camera) |
 | Mouse | Look around the cloud |
 | Mouse wheel | Zoom |
-| Shift | Ride a gust (faster, thinner snow) |
 | Left mouse | Squall (once unlocked) |
 | Right mouse | Frost Wave (once unlocked) |
 | R | Vortex Form (once unlocked) |
@@ -47,15 +46,19 @@ All bindings can be changed in Settings → Controls.
   pass - there is no half-frozen ground to hunt for. Resting lays nothing
   and earns nothing. Each square metre pays **Frost** only once. Snow
   drifts into narrow gaps between your passes by itself (up to about 3 m,
-  or 7 m with Deep Freeze), an arrow points to the nearest green ground
-  when none is close, and near the end the last green ground glows softly.
-- **One currency, one upgrade web.** Frost buys nodes in a web of 47
+  or 7 m with Deep Freeze), a soft ring on the ground shows exactly how wide
+  your snow falls (it can be hidden in Settings), and near the end the last
+  green ground glows softly. The late Snow Compass upgrade adds an arrow to
+  the nearest green ground when none is close.
+- **One flying speed.** There is no sprint key: Breeze, Gale and Jet Stream
+  raise your speed, and Tailwind makes you faster over frozen ground.
+- **One currency, one upgrade web.** Frost buys nodes in a web of 48
   upgrades across seven branches: Size, Snowfall, Wind, Cloudlets, Storm
   skills, The Land and Polar. Finishing a node reveals only its neighbours,
   so a handful of choices are open at a time.
 - **Keystones change how you play:** Deep Freeze, Tailwind, Snow Wake,
   Wanderers (cloudlets roam to green ground), Splintering Frost, Avalanche
-  Rider (drift over snowy slopes to set them sliding), Mountain Air,
+  Rider (drift over a snowy mountainside to set it sliding; small hills never slide), Mountain Air,
   Thunderhead, Absolute Zero, Thaw Sense.
 - **Three active skills** keep your hands busy to the end: Squall (a ring of
   snow), Frost Wave (a rolling strip of frost where you look) and Vortex
@@ -67,11 +70,13 @@ All bindings can be changed in Settings → Controls.
   while you are out flying.
 - **People:** a village with a church and a well, a lakeside hamlet with a
   pier, and a farm with a barn, fences, hay and fields of wheat, corn,
-  cabbages and sprouts that grow and ripen as you play - until your snow
-  flattens them (frozen fields pay extra Frost). Villagers stroll the
+  cabbages and sprouts that grow and ripen as you play. Snow frosts them at
+  once, then each plant slowly wilts, browns and slumps under it over about
+  two and a half minutes (frozen fields pay extra Frost). Villagers stroll the
   roads; once snow settles around them they slow down, hug themselves,
-  stamp their feet and shiver. Snow settles on roofs, chimneys smoke, and
-  your cloud rises over rooftops just as it does over hills.
+  stamp their feet and shiver. Snow settles on roofs only where it has
+  actually fallen, chimneys smoke, and your cloud eases up over rooftops as
+  if they were gentle hills.
   Regional milestones pay Frost; world milestones bring new, bigger nodes
   within reach.
 - **Ending:** when the world is frozen, a camera flight shows the ice age,
@@ -100,7 +105,7 @@ recent popular incrementals:
 - **Choice overload** comes from the number of options faced at once, not
   the total. Revealing neighbours only when a node is finished keeps about
   six open nodes on screen on average (roughly one per branch), while the
-  whole web still holds 47 nodes and over 110 levels.
+  whole web still holds 48 nodes and over 110 levels.
 
 ## Project layout
 
@@ -126,18 +131,23 @@ Key systems:
   a dirty-chunk GPU texture that every shader samples through one shared
   snow-mask function — so what looks frozen *is* frozen. Sea cells are
   "void": never counted, never paid, always drawn as open water. Shaders
-  sample it with a cubic B-spline plus a meandering warp, so the 1 m grid
-  never shows as squares or ruled lines.
+  sample it with a cubic B-spline plus a gentle meandering warp (at most a
+  couple of metres, so the drawn edge stays true to the real one), and the
+  1 m grid never shows as squares or ruled lines.
 - **TerrainData** shapes the island (coast distance, beaches, mountains that
   run down to the sea, a tarn-fed stream, the lake and its outlet) and
-  levels pads for the **SettlementPlan**. Water is one mesh following the
-  computed water level of every vertex, so it can never float over land.
+  levels pads for the **SettlementPlan**. The lake fills its basin from the
+  middle and stops at its rim; the outlet river leaves at lake level and
+  eases down to the sea between gently raised banks. Water is one mesh
+  following the computed water level of every vertex, so it can never float
+  over land. Trees and bushes are always drawn at full detail (no LOD
+  swaps), so nothing pops in or out, even in the closing flyover.
 - **WeatherManager** runs a fixed 30 Hz simulation. The player cloud moves
   every tick for crisp steering; other effects step every third tick,
   staggered by id, so heavy storms spread their cost across frames. Visuals
   interpolate and never feed back into the simulation (particle density
   cannot change snowfall or income).
-- **PlayerCloud** takes plain data input (`move_input`, `dashing`), so the
+- **PlayerCloud** takes plain data input (`move_input`), so the
   balancing bot flies it exactly like a player does.
 - **GameBalance** holds every number. Each stat node drives exactly one
   stat, so the web's "current → next" preview and gameplay cannot drift
@@ -158,11 +168,9 @@ godot --headless --path . res://scenes/tests.tscn -- only=cloud     # one suite
 
 The balancing bot (`scripts/tests/balance_bot.gd`) plays the real
 simulation: it flies the cloud to the nearest green ground, drifts slowly
-over it to paint, gusts between patches, fires skills when they would hit
-green ground, mows across it in passes, fires skills when they would hit
-green ground, and shops by strategy (cheapest first, spread across
+over it in passes, fires skills when they would hit green ground, and shops by strategy (cheapest first, spread across
 branches, random, saving up, skills last). With the current tuning every
-strategy completes the island in about 11–13 bot-minutes. The first
+strategy completes the island in about 13½–14½ bot-minutes. The first
 purchase lands within seconds, and there is never much more than a minute
 without an affordable upgrade. About 60% of the web gets bought, with about
 6 open choices on average (11 at most), and the cloud ends at roughly a
@@ -172,7 +180,7 @@ minutes); that still needs real playtesting to confirm.
 
 `scenes/visual_tour.tscn` boots the game, performs scripted actions and
 saves screenshots to `user://tour/` (scenarios: `basic`, `fx`, `late`,
-`ui`, `complete`, `island`, `snowcheck`, `round3`).
+`ui`, `complete`, `island`, `snowcheck`, `round3`, `round4`).
 
 ## Performance notes
 

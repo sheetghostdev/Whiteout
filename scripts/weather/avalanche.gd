@@ -38,7 +38,10 @@ static func release_check(terrain: TerrainData, cov: SnowCoverage, p: Vector2) -
 		return "Needs a snowy slope"
 	if cov.sample_coverage(p.x, p.y) < 0.5:
 		return "Needs a snowy slope"
-	if terrain.slope(p.x, p.y) < 0.16:
+	# Only real mountainsides: steep, high ground well above the valleys.
+	if terrain.sample_height(p.x, p.y) < 26.0 or terrain.highland_mask(p.x, p.y) < 0.4:
+		return "Needs a mountain"
+	if terrain.gradient(p.x, p.y, 4.0).length() < 0.45:
 		return "Slope too gentle"
 	return ""
 

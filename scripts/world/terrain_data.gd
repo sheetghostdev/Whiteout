@@ -15,6 +15,7 @@ const HALF := GameBalance.WORLD_HALF
 const SEA_LEVEL := 0.0
 const LAKE_LEVEL := 5.0
 const LAKE_CENTER := Vector2(135.0, -5.0)
+const LAKE_REACH := 64.0                 # lake_distance where the basin rim stands
 const SPAWN := Vector2(3.0, 84.0)
 const TRAILHEAD := Vector2(0.0, 66.0)
 
@@ -241,8 +242,28 @@ func _build_rivers() -> void:
 		wl.resize(n)
 		var widths := PackedFloat32Array()
 		widths.resize(n)
+		# Outlet river: stays level with the lake until it has left the basin,
+		# then eases down to reach sea level just before the coast.
+		var s0 := 0.0
+		var s1 := 1.0
+		if d["start"] >= 0.0:
+			var acc := 0.0
+			var left_lake := -1.0
+			var at_coast := -1.0
+			for k in n:
+				if k > 0:
+					acc += line[k].distance_to(line[k - 1])
+				if left_lake < 0.0 and lake_distance(line[k].x, line[k].y) > LAKE_REACH + 2.0:
+					left_lake = acc
+				if at_coast < 0.0 and coast_distance(line[k].x, line[k].y) < 12.0:
+					at_coast = acc
+			s0 = maxf(left_lake, 0.0)
+			s1 = at_coast if at_coast > s0 else acc
+		var along := 0.0
 		var prev := 1.0e9
 		for k in n:
+			if k > 0:
+				along += line[k].distance_to(line[k - 1])
 			var raw := sample_height(line[k].x, line[k].y)
 			var t := float(k) / (n - 1)
 			var w: float
@@ -250,8 +271,9 @@ func _build_rivers() -> void:
 				# Mountain stream: follow the land downhill, never rising.
 				w = minf(prev - 0.02, raw - 1.1)
 			else:
-				w = minf(prev - 0.004, lerpf(d["start"], d["end"], t))
-				w = minf(w, raw - 1.0)
+				# Raised banks (see _carve_river) hold it where the land is low.
+				var f := _smooth(s0, s1, along)
+				w = minf(prev, lerpf(d["start"], d["end"], f))
 			w = maxf(w, d["end"])
 			prev = w
 			wl[k] = w
@@ -313,7 +335,10 @@ func _carve_river(pts: PackedVector3Array, widths: PackedFloat32Array) -> void:
 		var hw := near_hw[idx]
 		var h := heights[idx]
 		var target: float
-		if dd < hw + 2.0:
+		# Current only in the river itself - none out on the still lake.
+		var vx := -HALF + (idx % V)
+		var vz := -HALF + (idx / V)
+		if dd < hw + 2.0 and lake_distance(vx, vz) > 58.0:
 			flow[idx] = near_dir[idx]
 		if dd < hw:
 			var q := dd / hw
@@ -327,6 +352,10 @@ func _carve_river(pts: PackedVector3Array, widths: PackedFloat32Array) -> void:
 			var bank_t := _smooth(hw, hw * 3.6, dd)
 			target = lerpf(w + 0.25, h, bank_t)
 			h = minf(h, target)
+			# Where the land is lower than the river, gentle raised banks
+			# keep the water in its channel instead of floating over the land.
+			if w > SEA_LEVEL + 0.3 and lake_distance(vx, vz) > LAKE_REACH - 6.0:
+				h = maxf(h, lerpf(w + 0.7, h, bank_t))
 			if dd < hw + 1.5:
 				water_level[idx] = maxf(water_level[idx], w)
 		heights[idx] = h
@@ -407,14 +436,29 @@ func _build_paths() -> void:
 						path_dist[idx] = dd
 
 
+## The lake fills its basin from the middle outwards and stops at the rim,
+## so it can never spill over low ground beyond it (the beach, the sea, the
+## outlet valley) as a sheet of water floating above the land.
 func _build_lake_water() -> void:
-	for j in V:
-		var z := -HALF + j
-		for i in V:
-			var x := -HALF + i
-			var idx := j * V + i
-			if heights[idx] < LAKE_LEVEL + 0.6 and lake_distance(x, z) < 90.0:
-				water_level[idx] = maxf(water_level[idx], LAKE_LEVEL)
+	var seen := PackedByteArray()
+	seen.resize(V * V)
+	var start := int(round(LAKE_CENTER.y + HALF)) * V + int(round(LAKE_CENTER.x + HALF))
+	var stack: Array[int] = [start]
+	seen[start] = 1
+	while not stack.is_empty():
+		var idx: int = stack.pop_back()
+		var i := idx % V
+		var j := idx / V
+		if heights[idx] >= LAKE_LEVEL + 0.6 or lake_distance(-HALF + i, -HALF + j) > LAKE_REACH:
+			continue
+		water_level[idx] = maxf(water_level[idx], LAKE_LEVEL)
+		for n: Vector2i in [Vector2i(i + 1, j), Vector2i(i - 1, j), Vector2i(i, j + 1), Vector2i(i, j - 1)]:
+			if n.x < 0 or n.y < 0 or n.x >= V or n.y >= V:
+				continue
+			var ni := n.y * V + n.x
+			if seen[ni] == 0:
+				seen[ni] = 1
+				stack.append(ni)
 
 
 # ----------------------------------------------------------------- regions
@@ -450,6 +494,10 @@ func _classify_cells() -> void:
 			cell_water[idx] = 1 if wl > -100.0 and h < wl - 0.05 and not sea else 0
 
 
+## Rooftops as gentle hills for the cloud: each building's top height falls
+## off slowly around its footprint, so the cloud eases up over a house
+## rather than jumping when its edge reaches the eaves.
+const ROOF_SLOPE := 0.35
 func _mark_roofs() -> void:
 	cell_roof.resize(N * N)
 	cell_roof.fill(-1000.0)
@@ -458,23 +506,34 @@ func _mark_roofs() -> void:
 		var hs: Vector2 = o[1]
 		var rot: float = o[2]
 		var top: float = o[3]
-		var reach := int(ceil(hs.length())) + 1
+		var ground := sample_height(c.x, c.y)
+		var fall := (top - ground) / ROOF_SLOPE
+		var reach := int(ceil(hs.length() + fall)) + 1
 		for cj in range(maxi(int(c.y + HALF) - reach, 0), mini(int(c.y + HALF) + reach, N - 1) + 1):
 			for ci in range(maxi(int(c.x + HALF) - reach, 0), mini(int(c.x + HALF) + reach, N - 1) + 1):
 				var local := (Vector2(-HALF + ci + 0.5, -HALF + cj + 0.5) - c).rotated(rot)
-				if absf(local.x) <= hs.x and absf(local.y) <= hs.y:
-					var idx := cj * N + ci
-					cell_roof[idx] = maxf(cell_roof[idx], top)
+				var ex := maxf(absf(local.x) - hs.x, 0.0)
+				var ez := maxf(absf(local.y) - hs.y, 0.0)
+				var h := top - sqrt(ex * ex + ez * ez) * ROOF_SLOPE
+				var idx := cj * N + ci
+				cell_roof[idx] = maxf(cell_roof[idx], h)
 
 
-## Highest solid thing at a point: ground, water surface or a rooftop.
+## Highest thing the cloud must clear at a point: ground, water surface or
+## the gentle "hill" around a rooftop (bilinear, so the rise is smooth).
 func obstacle_height(x: float, z: float) -> float:
 	var h := surface_height(x, z)
 	if not in_bounds(x, z):
 		return h
-	var ci := clampi(int(floor(x + HALF)), 0, N - 1)
-	var cj := clampi(int(floor(z + HALF)), 0, N - 1)
-	return maxf(h, cell_roof[cj * N + ci])
+	var fx := clampf(x + HALF - 0.5, 0.0, N - 1.001)
+	var fz := clampf(z + HALF - 0.5, 0.0, N - 1.001)
+	var i := int(fx)
+	var j := int(fz)
+	var tx := fx - i
+	var tz := fz - j
+	var idx := j * N + i
+	var r := lerpf(lerpf(cell_roof[idx], cell_roof[idx + 1], tx), lerpf(cell_roof[idx + N], cell_roof[idx + N + 1], tx), tz)
+	return maxf(h, r)
 
 
 # ---------------------------------------------------------------- sampling

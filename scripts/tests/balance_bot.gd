@@ -3,7 +3,7 @@ extends RefCounted
 ## Plays WHITEOUT headlessly using the real simulation (coverage, the player
 ## cloud, skills, economy, milestones) so balance can be measured instead of
 ## guessed. It steers the cloud exactly as a player would, through
-## PlayerCloud.move_input / dashing, and shops according to a strategy.
+## PlayerCloud.move_input, and shops according to a strategy.
 
 const STRATEGIES := ["standard", "branchy", "random", "saver", "skills_last"]
 
@@ -160,7 +160,6 @@ func _steer() -> void:
 	# Within the patch, keep the current heading: the cloud overshoots,
 	# then the next goal turns it back for a parallel pass.
 	cloud.move_input = _heading
-	cloud.dashing = d > r * 3.0 or prog.has("tailwind")
 
 
 func _green_around(c: Vector2, rr: float) -> float:

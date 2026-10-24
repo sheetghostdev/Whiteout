@@ -8,7 +8,6 @@ const ACTIONS := [
 	["move_back", "Drift Back", {"key": KEY_S}],
 	["move_left", "Drift Left", {"key": KEY_A}],
 	["move_right", "Drift Right", {"key": KEY_D}],
-	["dash", "Ride a Gust", {"key": KEY_SHIFT}],
 	["skill_squall", "Squall", {"mouse": MOUSE_BUTTON_LEFT}],
 	["skill_wave", "Frost Wave", {"mouse": MOUSE_BUTTON_RIGHT}],
 	["skill_vortex", "Vortex Form", {"key": KEY_R}],

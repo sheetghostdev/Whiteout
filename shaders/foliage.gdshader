@@ -29,8 +29,9 @@ void vertex() {
 	float sway = sin(TIME * 1.7 + origin.x * 0.21 + origin.z * 0.17) * 0.6 + sin(TIME * 3.1 + origin.x * 0.7) * 0.25;
 	vec2 wind = (vec2(0.5, 0.3) + wo_wind * 0.08) * sway * h * h * 0.5 * (1.0 - bury);
 	VERTEX.xz += wind;
-	// Sink into the snow layer; fully buried blades collapse to nothing.
-	float keep = 1.0 - smoothstep(0.25, 0.9, bury);
+	// Sink into the snow layer early, so no tall frosted blades stick out of
+	// the snow's edge; fully buried blades collapse to nothing.
+	float keep = 1.0 - smoothstep(0.02, 0.45, bury);
 	VERTEX.y = mix(-0.15, VERTEX.y, keep);
 	VERTEX.xz *= mix(0.4, 1.0, keep);
 	// Distance fade by shrinking - avoids alpha sorting cost.
@@ -50,8 +51,8 @@ void fragment() {
 		col *= 0.85 + tint * 0.3;
 		col = mix(col, col * vec3(1.08, 1.04, 0.8), clamp(tint - 0.6, 0.0, 1.0));
 	}
-	// Frosted tips as snow builds up around the clump.
-	col = mix(col, wo_lin(vec3(0.9, 0.94, 1.0)), bury * 0.55 * COLOR.a);
+	// A faint frost on the tips while the clump sinks.
+	col = mix(col, wo_lin(vec3(0.9, 0.94, 1.0)), bury * 0.2 * COLOR.a);
 	ALBEDO = col;
 	ROUGHNESS = 0.9;
 	BACKLIGHT = vec3(0.06, 0.09, 0.02) * (1.0 - bury);

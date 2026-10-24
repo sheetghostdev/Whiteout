@@ -21,6 +21,7 @@ var particle_density := 1.0
 var vegetation_density := 1.0
 var draw_distance := 1.0
 var show_fps := false
+var show_snow_ring := true
 var bindings := {}
 
 
@@ -49,6 +50,7 @@ func load_settings() -> void:
 	vegetation_density = float(cf.get_value("graphics", "vegetation", vegetation_density))
 	draw_distance = float(cf.get_value("graphics", "draw_distance", draw_distance))
 	show_fps = bool(cf.get_value("graphics", "show_fps", show_fps))
+	show_snow_ring = bool(cf.get_value("graphics", "show_snow_ring", show_snow_ring))
 	var saved: Dictionary = cf.get_value("controls", "bindings", {})
 	for k in saved:
 		if bindings.has(k) and saved[k] is Array:
@@ -72,6 +74,7 @@ func save_settings() -> void:
 	cf.set_value("graphics", "vegetation", vegetation_density)
 	cf.set_value("graphics", "draw_distance", draw_distance)
 	cf.set_value("graphics", "show_fps", show_fps)
+	cf.set_value("graphics", "show_snow_ring", show_snow_ring)
 	cf.save(PATH)
 
 

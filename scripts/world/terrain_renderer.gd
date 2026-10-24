@@ -237,11 +237,16 @@ func _build_water() -> void:
 			var corners := [a, a + 1, a + V, a + V + 1]
 			var wet := false
 			var lo := 1.0e9
+			var hi := -1.0e9
 			for k in corners:
 				if wl[k] > -100.0 and wl[k] > terrain.heights[k] - 0.6:
 					wet = true
 				lo = minf(lo, level[k])
+				hi = maxf(hi, level[k])
 			if not wet or lo < -100.0:
+				continue
+			# Where the river reaches the sea, the sea itself is the surface.
+			if hi <= TerrainData.SEA_LEVEL + 0.15:
 				continue
 			var ids := []
 			for k in corners:

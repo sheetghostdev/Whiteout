@@ -165,7 +165,7 @@ func refresh_all() -> void:
 
 
 func _update_hints() -> void:
-	var parts: Array[String] = ["WASD  Drift", "SHIFT  Gust", "TAB  Upgrades"]
+	var parts: Array[String] = ["WASD  Drift", "TAB  Upgrades"]
 	if Game.prog.has("overview_map"):
 		parts.append("M  Map")
 	if Game.prog.has("thaw_sense"):
@@ -245,7 +245,8 @@ func _process(delta: float) -> void:
 		_green_timer = 0.5
 		var c := Game.weather.cloud
 		var cov := Game.coverage()
-		_green = cov.find_nearest_unfrozen_area(c.pos, 1.0e9, 1) if c != null and cov != null else Vector2.INF
+		var on := c != null and cov != null and Game.prog.has("snow_compass")
+		_green = cov.find_nearest_unfrozen_area(c.pos, 1.0e9, 1) if on else Vector2.INF
 	_compass.queue_redraw()
 	_ready_timer -= delta
 	if _ready_timer <= 0.0:
@@ -349,8 +350,8 @@ func toast(title: String, subtitle: String, kind: String) -> void:
 	tw.tween_callback(p.queue_free)
 
 
-## Points at the nearest green ground once you are surrounded by snow, so no
-## forgotten patch is ever hard to find.
+## With the Snow Compass upgrade, points at the nearest green ground once you
+## are surrounded by snow, so no forgotten patch is ever hard to find.
 func _draw_compass() -> void:
 	var c := Game.weather.cloud if Game.weather != null else null
 	var cam := get_viewport().get_camera_3d()

@@ -33,14 +33,14 @@ func _movement(t) -> void:
 	c.move_input = Vector2(1, 0)
 	_run(w, 3.0)
 	t.check(c.pos.x > prog.stat("speed") * 2.0 and absf(c.pos.y - 80.0) < 0.5, "cloud drifts where it is steered (%.1f m)" % c.pos.x)
-	var walk := c.pos.x
+	var slow := c.pos.x
 	c.pos = Vector2(0, 80)
 	c.vel = Vector2.ZERO
-	c.dashing = true
+	prog.levels["breeze"] = 5
 	_run(w, 3.0)
-	t.check(c.pos.x > walk * 1.3, "gusting is faster than drifting")
+	t.check(c.pos.x > slow * 1.3, "speed upgrades make you fly faster")
+	prog.levels.erase("breeze")
 	c.move_input = Vector2.ZERO
-	c.dashing = false
 	_run(w, 2.0)
 	var still := c.pos
 	_run(w, 1.0)
@@ -110,14 +110,13 @@ func _snowfall(t) -> void:
 	w3.queue_free()
 
 
-func _freeze_rate(t, levels: Dictionary, dash: bool, seconds: float = 8.0, throttle: float = 1.0, there_and_back: bool = false) -> float:
+func _freeze_rate(t, levels: Dictionary, seconds: float = 8.0, throttle: float = 1.0, there_and_back: bool = false) -> float:
 	var prog := Progression.new()
 	for k in levels:
 		prog.levels[k] = levels[k]
 	var w := _world(t, prog)
 	var c := w.spawn_player_cloud(Vector2(-60, 120))
 	c.move_input = Vector2(throttle, 0)
-	c.dashing = dash
 	_run(w, seconds)
 	if there_and_back:
 		c.move_input = Vector2(-throttle, 0)
@@ -137,14 +136,19 @@ func _keystones(t) -> void:
 	_run(wdf, 0.6)
 	t.check(wdf.cov.gap_reach > 2, "Deep Freeze widens the gaps drifting snow can seal")
 	wdf.queue_free()
-	var fast := _freeze_rate(t, base, true)
-	var tail := base.duplicate()
-	tail["tailwind"] = 1
-	t.check(_freeze_rate(t, tail, true) > fast * 1.2, "Tailwind keeps your trail wide while gusting")
+	# Tailwind: fast over frozen ground, normal speed over green.
+	var pt := Progression.new()
+	pt.levels["tailwind"] = 1
+	var wt := _world(t, pt)
+	var ct := wt.spawn_player_cloud(Vector2(0, 80))
+	var v_green := ct.max_speed()
+	wt.cov.apply_disc(0, 80, 6.0, 1.0)
+	t.check(ct.max_speed() > v_green * 1.4 and v_green == pt.stat("speed"), "Tailwind speeds you over frozen ground only")
+	wt.queue_free()
 	var wake := base.duplicate()
 	wake["snow_wake"] = 1
-	var w_on := _freeze_rate(t, wake, true, 10.0)
-	var w_off := _freeze_rate(t, base, true, 10.0)
+	var w_on := _freeze_rate(t, wake, 10.0)
+	var w_off := _freeze_rate(t, base, 10.0)
 	t.check(w_on > w_off * 1.1, "Snow Wake leaves snowing flurries behind (%.0f vs %.0f)" % [w_on, w_off])
 	# Thunderhead is a big jump.
 	var p := Progression.new()
@@ -159,10 +163,15 @@ func _keystones(t) -> void:
 	var slope := Vector2.INF
 	for k in 4000:
 		var q := Vector2(-200 + (k % 80) * 5.0, -230 + (k / 80) * 5.0)
-		if terrain.slope(q.x, q.y) > 0.25 and not terrain.is_water(q.x, q.y) and terrain.coast_at(q.x, q.y) > 70.0:
+		if terrain.gradient(q.x, q.y, 4.0).length() > 0.55 and terrain.sample_height(q.x, q.y) > 30.0 \
+				and terrain.highland_mask(q.x, q.y) > 0.5 and not terrain.is_water(q.x, q.y) and terrain.coast_at(q.x, q.y) > 40.0:
 			slope = q
 			break
-	t.check(slope != Vector2.INF, "test world has a slope")
+	t.check(slope != Vector2.INF, "test world has a mountainside")
+	# Small hills in the meadows never set anything off.
+	var hill := Vector2(-48, 128)
+	w.cov.apply_disc(hill.x, hill.y, 20.0, 1.0)
+	t.check(Avalanche.release_check(terrain, w.cov, hill) != "" and not w.try_ride_avalanche(hill), "no avalanches from small hills")
 	w.cov.apply_disc(slope.x, slope.y, 6.0, 1.0)
 	t.check(w.try_ride_avalanche(slope), "Avalanche Rider releases on a snowy slope")
 	t.check(not w.try_ride_avalanche(slope), "Avalanche Rider then recharges")

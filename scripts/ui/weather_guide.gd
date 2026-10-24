@@ -44,8 +44,8 @@ func open() -> void:
 	_list.add_child(_entry("cloud", "Drift and snow",
 		"WASD drifts relative to the camera, the mouse looks around and the wheel zooms. Everything along your path freezes " +
 		"in one pass, and narrow gaps between passes fill in by themselves. Resting earns nothing; each patch pays Frost only once.", true))
-	_list.add_child(_entry("wind", "Ride a gust", "Hold Shift to fly faster. Gusting narrows your trail, unless you find Tailwind.", true))
-	_list.add_child(_entry("eye", "Finding the last green", "When no green ground is close by, an arrow points to the nearest patch. Near the end, the last green ground glows softly.", true))
+	_list.add_child(_entry("wind", "Fly faster", "Your speed comes from the Wind upgrades (Breeze, Gale, Jet Stream).", true))
+	_list.add_child(_entry("eye", "Finding the last green", "Near the end, the last green ground glows softly. The Snow Compass upgrade adds an arrow that points to the nearest patch when none is close by.", true))
 	_list.add_child(_entry("crystal", "Grow", "Press TAB to open the upgrade web. Finishing a node reveals the nodes it connects to; keystones change how you play.", true))
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 8)

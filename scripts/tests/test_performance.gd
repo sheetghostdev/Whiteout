@@ -48,7 +48,6 @@ func run(t, _full: bool) -> void:
 	var peak := 0
 	for i in frames:
 		c.move_input = Vector2.from_angle(i * 0.004)
-		c.dashing = true
 		if i % 30 == 0:
 			w.cooldowns["squall"] = 0.0
 			w.cooldowns["frost_wave"] = 0.0

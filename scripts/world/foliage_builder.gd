@@ -4,13 +4,12 @@ extends Node3D
 ## clustered (not uniform) distributions, rendered with chunked MultiMeshes.
 ## MultiMeshes always carry instance colours (white) alongside custom data:
 ## the Compatibility renderer misreads vertex colours otherwise.
-## Trees use two LODs: per-variant MultiMeshes up close and one merged
-## low-poly mesh per chunk in the distance.
+## Trees and bushes are always drawn at full detail (no LOD swaps or
+## visibility ranges), so nothing pops in or out as the camera moves.
 
 const TREE_CHUNK := 64.0
 const GRASS_CHUNK := 32.0
 const FLOWER_CHUNK := 64.0
-const NEAR_END := 190.0
 
 enum Kind { BROADLEAF, PINE, SMALL, BUSH }
 
@@ -26,13 +25,10 @@ var _grove := FastNoiseLite.new()
 var _flower_noise := FastNoiseLite.new()
 
 var _tree_mat: ShaderMaterial
-var _tree_far_mat: ShaderMaterial
 var _rock_mat: ShaderMaterial
 var _grass_mat: ShaderMaterial
 var _flower_mat: ShaderMaterial
 
-var near_nodes: Array[GeometryInstance3D] = []
-var far_nodes: Array[GeometryInstance3D] = []
 var grass_nodes: Array[GeometryInstance3D] = []
 
 const VARIANTS := {Kind.BROADLEAF: 4, Kind.PINE: 4, Kind.SMALL: 3, Kind.BUSH: 4}
@@ -63,8 +59,6 @@ func setup(t: TerrainData, p_density: float) -> void:
 	_flower_noise.frequency = 0.035
 	_flower_noise.fractal_octaves = 2
 	_tree_mat = ShaderLib.material("tree")
-	_tree_far_mat = ShaderLib.material("tree")
-	_tree_far_mat.set_shader_parameter("merged", true)
 	_rock_mat = ShaderLib.material("tree")
 	_rock_mat.set_shader_parameter("per_vertex_snow", true)
 	_rock_mat.set_shader_parameter("sway_amount", 0.0)
@@ -200,14 +194,10 @@ func build_trees() -> void:
 		if not buckets.has(key):
 			buckets[key] = []
 		buckets[key].append(t)
-	var near_meshes := {}
-	var far_arrays := {}
+	var meshes := {}
 	for kind in VARIANTS:
 		for v in VARIANTS[kind]:
-			near_meshes[Vector2i(kind, v)] = _mesh_for(kind, v, 0)
-			if kind != Kind.BUSH:
-				far_arrays[Vector2i(kind, v)] = _mesh_for(kind, v, 1).surface_get_arrays(0)
-	var near_end := NEAR_END
+			meshes[Vector2i(kind, v)] = _mesh_for(kind, v, 0)
 	for key in buckets:
 		var list: Array = buckets[key]
 		var ci: int = key % chunks
@@ -225,7 +215,7 @@ func build_trees() -> void:
 			mm.transform_format = MultiMesh.TRANSFORM_3D
 			mm.use_colors = true
 			mm.use_custom_data = true
-			mm.mesh = near_meshes[vk]
+			mm.mesh = meshes[vk]
 			mm.instance_count = items.size()
 			for k in items.size():
 				var t: Dictionary = items[k]
@@ -236,47 +226,9 @@ func build_trees() -> void:
 			mmi.multimesh = mm
 			mmi.material_override = _tree_mat
 			mmi.position = origin
-			var is_bush: bool = vk.x == Kind.BUSH
-			mmi.visibility_range_end = 150.0 if is_bush else near_end
-			mmi.visibility_range_end_margin = 10.0
-			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF if is_bush else GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
-			if is_bush:
+			if vk.x == Kind.BUSH:
 				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-				mmi.set_meta("bush", true)
 			add_child(mmi)
-			near_nodes.append(mmi)
-		# Merged far mesh for the whole chunk.
-		var mb := MeshBuilder.new()
-		for t in list:
-			if t["kind"] == Kind.BUSH:
-				continue
-			var arr: Array = far_arrays[Vector2i(t["kind"], t["variant"])]
-			var xf := _xform(t["pos"], t["rot"], t["scale"], origin)
-			var sv: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-			var sn: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
-			var sc: PackedColorArray = arr[Mesh.ARRAY_COLOR]
-			var si: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
-			var base := mb.vertex_count()
-			var p: Vector3 = t["pos"]
-			for k in sv.size():
-				mb.verts.append(xf * sv[k])
-				mb.normals.append(xf.basis.orthonormalized() * sn[k])
-				mb.colors.append(sc[k])
-				mb.uvs.append(Vector2(t["hue"], 0.0))
-				mb.uv2s.append(Vector2(p.x, p.z))
-			for k in si.size():
-				mb.indices.append(base + si[k])
-		if mb.vertex_count() > 0:
-			var mesh := mb.commit()
-			var far := MeshInstance3D.new()
-			far.mesh = mesh
-			far.material_override = _tree_far_mat
-			far.position = origin
-			far.visibility_range_begin = near_end
-			far.visibility_range_begin_margin = 10.0
-			far.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			add_child(far)
-			far_nodes.append(far)
 
 
 func build_rocks_and_stumps() -> void:
@@ -474,11 +426,6 @@ func build_flowers() -> void:
 func apply_draw_distance(scale: float) -> void:
 	for n in grass_nodes:
 		n.visibility_range_end = 95.0 * scale
-	for n in near_nodes:
-		var bush: bool = n.get_meta("bush", false)
-		n.visibility_range_end = (150.0 if bush else NEAR_END) * scale
-	for n in far_nodes:
-		n.visibility_range_begin = NEAR_END * scale
 	var shader_fade := 80.0 * scale
 	_grass_mat.set_shader_parameter("fade_start", shader_fade - 20.0)
 	_grass_mat.set_shader_parameter("fade_end", shader_fade)

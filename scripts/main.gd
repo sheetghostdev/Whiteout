@@ -182,6 +182,7 @@ func begin_play(is_new: bool) -> void:
 		cinematic = null
 	letterbox.visible = false
 	player.spawn_at(TerrainData.SPAWN, 0.0)
+	world.settlements.reset_crops(not is_new)
 	if is_new:
 		world.coverage.update_texture()
 		ShaderLib.set_global("wo_completion", 0.0)

@@ -192,7 +192,7 @@ func run(t, _full: bool) -> void:
 	tx.update_texture()
 	t.check(tx.tex_bytes[tx.cell_index(10, 10)] == 255, "texture byte matches frozen cell")
 	t.check(not tx.any_dirty, "upload clears dirty flags")
-	t.check(tx.tex_bytes[tx.cell_index(250, 250)] == 0, "the sea is drawn as open water")
+	t.check(tx.tex_bytes[tx.cell_index(250, 250)] == 255, "ground shaders see the sea as done, so snow reaches the waterline")
 
 
 func _consistency(t, cov: SnowCoverage, label: String) -> void:

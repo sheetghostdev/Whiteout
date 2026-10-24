@@ -8,7 +8,6 @@ const COATS: Array[Color] = [Color(0.72, 0.22, 0.20), Color(0.22, 0.38, 0.62), C
 	Color(0.80, 0.62, 0.22), Color(0.48, 0.30, 0.52), Color(0.36, 0.36, 0.40)]
 const SKIN: Array[Color] = [Color(0.96, 0.80, 0.66), Color(0.82, 0.62, 0.46), Color(0.58, 0.40, 0.28), Color(0.92, 0.72, 0.58)]
 const ANIMATE_RANGE := 160.0
-const VISIBLE_RANGE := 260.0
 
 var terrain: TerrainData
 var coverage: SnowCoverage
@@ -129,7 +128,6 @@ func _process(delta: float) -> void:
 	for p in people:
 		var root: Node3D = p["root"]
 		var d := Vector2(root.position.x - cp.x, root.position.z - cp.z).length()
-		root.visible = d < VISIBLE_RANGE
 		if d > ANIMATE_RANGE and p.has("placed"):
 			continue
 		p["placed"] = true
