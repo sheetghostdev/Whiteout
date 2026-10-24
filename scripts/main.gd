@@ -364,7 +364,7 @@ func _update_tutorial(delta: float) -> void:
 		EventBus.notify.emit("FROST EARNED", "Freshly frozen ground earns Frost. Press TAB to grow your cloud.", "info")
 	if not "move" in tut and _tut_timer > 45.0:
 		tut.append("move")
-		EventBus.notify.emit("TIP", "Ground only pays once - drift on to fresh green grass. Linger a moment to freeze it solid.", "info")
+		EventBus.notify.emit("TIP", "Sweep back and forth across the grass: each pass lays more snow until it freezes solid.", "info")
 	st["tut"] = tut
 
 

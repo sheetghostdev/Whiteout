@@ -1,5 +1,6 @@
-// Lakes and rivers. Water depth comes from the global height texture, so no
-// screen-space reads are needed. Coverage turns the surface into ice.
+// Lakes, rivers and the sea. Water depth comes from the global height
+// texture, so no screen-space reads are needed. Coverage turns inland water
+// into ice; the open sea never freezes. River flow arrives in vertex colour.
 shader_type spatial;
 render_mode blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_schlick_ggx;
 
@@ -8,18 +9,20 @@ render_mode blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_sc
 uniform vec3 shallow_color : source_color = vec3(0.36, 0.80, 0.78);
 uniform vec3 deep_color : source_color = vec3(0.06, 0.36, 0.60);
 uniform vec3 ice_color : source_color = vec3(0.72, 0.89, 0.95);
-uniform float flow_speed = 0.0;
-uniform vec2 flow_dir = vec2(0.0, 1.0);
+uniform bool open_sea = false;
 
 varying vec3 wpos;
-varying float ice_v;
+varying vec2 vflow;
 
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	float c = wo_cov(wpos.xz);
-	ice_v = c;
+	vflow = (COLOR.rg - 0.5) * 4.0;
+	float c = open_sea ? 0.0 : wo_cov(wpos.xz);
 	float calm = 1.0 - smoothstep(0.2, 0.9, c);
 	float wave = sin(wpos.x * 0.35 + TIME * 1.1) * cos(wpos.z * 0.28 + TIME * 0.8);
+	if (open_sea) {
+		wave = wave * 2.5 + sin(wpos.x * 0.07 - TIME * 0.6) * cos(wpos.z * 0.05 + TIME * 0.45) * 3.0;
+	}
 	VERTEX.y += wave * 0.035 * calm;
 }
 
@@ -46,20 +49,20 @@ void fragment() {
 	float depth = max(wpos.y - ground, 0.0);
 
 	// ---- liquid water
-	vec2 flow = flow_dir * flow_speed * TIME;
+	vec2 flow = vflow * TIME * 0.6;
 	float n1 = wo_noise(xz * 0.45 + vec2(TIME * 0.12, TIME * 0.07) - flow);
 	float n2 = wo_noise(xz * 0.9 - vec2(TIME * 0.09, -TIME * 0.11) - flow * 1.3);
 	vec3 wn = normalize(vec3((n1 - 0.5) * 0.35, 1.0, (n2 - 0.5) * 0.35));
 	vec3 vw = normalize((INV_VIEW_MATRIX * vec4(VIEW, 0.0)).xyz);
 	float fres = pow(1.0 - clamp(dot(vw, wn), 0.0, 1.0), 4.0);
-	vec3 water = mix(shallow_color, deep_color, smoothstep(0.2, 3.5, depth));
+	vec3 water = mix(shallow_color, deep_color, smoothstep(0.2, open_sea ? 9.0 : 3.5, depth));
 	water = mix(water, vec3(0.70, 0.84, 0.96), fres * 0.55);
 	float foam = (1.0 - smoothstep(0.05, 0.45, depth)) * (0.55 + 0.45 * wo_noise(xz * 2.0 + TIME * 0.3));
 	water = mix(water, vec3(0.92, 0.97, 1.0), foam * 0.6);
 	float water_alpha = mix(0.55, 0.92, smoothstep(0.1, 2.5, depth));
 
 	// ---- ice
-	float c = wo_cov_warped(xz);
+	float c = open_sea ? 0.0 : wo_cov_smooth(xz);
 	float n = wo_fbm(xz * 0.3) * 0.7 + wo_noise(xz * 1.7) * 0.3;
 	float s = clamp((c - 0.02) / 0.95, 0.0, 1.0);
 	float ice = smoothstep(n * 0.88, n * 0.88 + 0.1, s);

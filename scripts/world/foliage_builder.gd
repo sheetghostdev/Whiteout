@@ -78,6 +78,10 @@ func _blocked(x: float, z: float, clearance: float) -> bool:
 	if not terrain.in_bounds(x, z, 8.0):
 		return true
 	var vi := terrain.vertex_index(x, z)
+	if terrain.coast[vi] < 7.0 + clearance * 2.0:
+		return true
+	if terrain.built_at(x, z) != 0:
+		return true
 	if terrain.water_level[vi] > -100.0 and terrain.heights[vi] < terrain.water_level[vi] + 0.9:
 		return true
 	if terrain.river_dist[vi] < 5.0 + clearance:
@@ -351,6 +355,8 @@ func _grass_density(x: float, z: float) -> float:
 	if wl > -100.0 and h < wl + 0.7:
 		return 0.0
 	if terrain.path_dist[vi] < 1.3:
+		return 0.0
+	if terrain.coast[vi] < 5.0 or terrain.built_at(x, z) != 0:
 		return 0.0
 	var s := terrain.slope(x, z)
 	if s > 0.9:

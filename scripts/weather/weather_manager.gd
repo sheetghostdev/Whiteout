@@ -104,9 +104,13 @@ func _step() -> void:
 			else:
 				e.queue_free()
 		i -= 1
-	# Ice creeps across water bodies from frozen spots.
 	if tick % 15 == 0:
-		_add_frost_raw(cov.water_spread_tick(0.5, prog.stat("ice_creep")))
+		# Snow drifts into small gaps where you have been snowing.
+		_add_frost_raw(cov.drift_fill(24))
+		# Ice creeps across water from frozen spots - only while you are
+		# flying, so a resting cloud earns nothing.
+		if cloud != null and cloud.is_active():
+			_add_frost_raw(cov.water_spread_tick(0.5, prog.stat("ice_creep")))
 
 
 # --------------------------------------------------------------- skills
@@ -131,7 +135,7 @@ func use_skill(id: String, aim: Vector2) -> String:
 			if count_kind("frost_pulse") >= GameBalance.MAX_PULSES:
 				return "Too much weather"
 			var p := FrostPulse.new()
-			p.setup(cloud.pos, prog.stat("squall_radius") + cloud.radius, 0.3, "squall")
+			p.setup(cloud.pos, prog.stat("squall_radius") + cloud.radius, 0.25, "squall")
 			spawn(p, -1, "squall")
 		"frost_wave":
 			if not can_spawn("frost_front"):

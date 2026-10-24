@@ -32,7 +32,7 @@ func _movement(t) -> void:
 	var c := w.spawn_player_cloud(Vector2(0, 80))
 	c.move_input = Vector2(1, 0)
 	_run(w, 3.0)
-	t.check(c.pos.x > 12.0 and absf(c.pos.y - 80.0) < 0.5, "cloud drifts where it is steered (%.1f m)" % c.pos.x)
+	t.check(c.pos.x > prog.stat("speed") * 2.0 and absf(c.pos.y - 80.0) < 0.5, "cloud drifts where it is steered (%.1f m)" % c.pos.x)
 	var walk := c.pos.x
 	c.pos = Vector2(0, 80)
 	c.vel = Vector2.ZERO
@@ -57,29 +57,61 @@ func _snowfall(t) -> void:
 	var prog := Progression.new()
 	var w := _world(t, prog)
 	var c := w.spawn_player_cloud(Vector2(0, 80))
-	_run(w, 1.0 / prog.stat("rate") + 1.0)
 	var cov := w.cov
-	t.check(cov.get_coverage(0, 80) >= 1.0, "hovering freezes the ground under you")
-	t.check(cov.get_coverage(0 + c.radius + 3.0, 80) == 0.0, "snow only falls under the cloud")
-	t.check(prog.frost > 0.0, "freezing earns Frost")
-	_run(w, 3.0 / prog.stat("rate"))
-	var f0 := prog.frost
+	_run(w, 5.0)
+	t.check(cov.total_sum == 0.0 and prog.frost == 0.0, "hovering in place lays no snow and earns nothing")
+	c.move_input = Vector2(1, 0)
 	_run(w, 3.0)
-	t.check(prog.frost - f0 < 1.0, "frozen ground pays only once")
-	# Bigger and snowier clouds freeze more.
-	var area_small := cov.total_sum
+	c.move_input = Vector2.ZERO
+	_run(w, 3.0)
+	var mid := Vector2(5.0, 80.0)
+	var one := cov.get_coverage(mid.x, mid.y)
+	t.approx(one, minf(prog.stat("rate") * cov.exposure[cov.cell_index(mid.x, mid.y)], 1.0), 0.02,
+		"one pass lays exactly one layer of snow (%.2f)" % one)
+	t.check(cov.get_coverage(mid.x, mid.y + c.radius + 2.0) == 0.0, "snow only falls under the cloud's path")
+	t.check(prog.frost > 0.0, "freezing earns Frost")
+	var f0 := prog.frost
+	_run(w, 4.0)
+	t.check(prog.frost - f0 < 0.5, "resting earns nothing more")
+	# Passing back and forth finishes the job.
+	for k in 6:
+		c.move_input = Vector2(-1 if k % 2 == 0 else 1, 0)
+		_run(w, 3.0)
+	t.check(cov.get_coverage(mid.x, mid.y) >= 1.0, "a few passes freeze the ground solid")
+	# Flying over ground that is already frozen pays nothing.
+	c.move_input = Vector2.ZERO
+	_run(w, 1.0)
+	cov.apply_disc(-40, 80, 20.0, 1.0)
+	cov.apply_disc(-40, 80, 20.0, 1.0)
+	c.pos = Vector2(-50, 80)
+	# Let drifting snow settle the edge of the painted patch first.
+	for k in 20:
+		cov.drift_fill(1024)
+	_run(w, 0.5)
+	var f1 := prog.frost
+	c.move_input = Vector2(1, 0)
+	_run(w, 2.0)
+	t.check(prog.frost - f1 < 0.5, "frozen ground pays only once (%.2f)" % (prog.frost - f1))
+	# Bigger and snowier clouds freeze more per pass.
 	var prog2 := Progression.new()
 	prog2.levels["billow"] = 5
 	prog2.levels["flurry"] = 5
 	var w2 := _world(t, prog2)
-	w2.spawn_player_cloud(Vector2(0, 80))
-	_run(w2, 6.0)
-	t.check(w2.cov.total_sum > area_small * 2.0, "upgrades make a clear difference (%.0f vs %.0f m²)" % [w2.cov.total_sum, area_small])
+	var c2 := w2.spawn_player_cloud(Vector2(0, 80))
+	c2.move_input = Vector2(1, 0)
+	_run(w2, 3.0)
+	var prog3 := Progression.new()
+	var w3 := _world(t, prog3)
+	var c3 := w3.spawn_player_cloud(Vector2(0, 80))
+	c3.move_input = Vector2(1, 0)
+	_run(w3, 3.0)
+	t.check(w2.cov.total_sum > w3.cov.total_sum * 1.8, "upgrades make a clear difference (%.0f vs %.0f m²)" % [w2.cov.total_sum, w3.cov.total_sum])
 	w.queue_free()
 	w2.queue_free()
+	w3.queue_free()
 
 
-func _freeze_rate(t, levels: Dictionary, dash: bool, seconds: float = 8.0, throttle: float = 1.0) -> float:
+func _freeze_rate(t, levels: Dictionary, dash: bool, seconds: float = 8.0, throttle: float = 1.0, there_and_back: bool = false) -> float:
 	var prog := Progression.new()
 	for k in levels:
 		prog.levels[k] = levels[k]
@@ -88,23 +120,27 @@ func _freeze_rate(t, levels: Dictionary, dash: bool, seconds: float = 8.0, throt
 	c.move_input = Vector2(throttle, 0)
 	c.dashing = dash
 	_run(w, seconds)
+	if there_and_back:
+		c.move_input = Vector2(-throttle, 0)
+		_run(w, seconds)
 	var v := w.cov.total_sum
 	w.queue_free()
 	return v
 
 
 func _keystones(t) -> void:
-	var base := {"billow": 5, "flurry": 5, "swell": 3}
-	# Deep Freeze pays off when you drift slowly enough to whiten the ground.
-	var plain := _freeze_rate(t, base, false, 10.0, 0.55)
-	var deep := base.duplicate()
+	var base := {"billow": 5, "swell": 3, "flurry": 5, "heavy_snow": 3}
+	# Deep Freeze snaps mostly-white ground fully frozen, saving a pass.
+	var thin := {"billow": 5, "swell": 3, "flurry": 5}
+	var plain := _freeze_rate(t, thin, false, 6.0, 1.0, true)
+	var deep := thin.duplicate()
 	deep["deep_freeze"] = 1
-	var df := _freeze_rate(t, deep, false, 10.0, 0.55)
+	var df := _freeze_rate(t, deep, false, 6.0, 1.0, true)
 	t.check(df > plain * 1.1, "Deep Freeze freezes more ground (%.0f vs %.0f)" % [df, plain])
 	var fast := _freeze_rate(t, base, true)
 	var tail := base.duplicate()
 	tail["tailwind"] = 1
-	t.check(_freeze_rate(t, tail, true) > fast * 1.2, "Tailwind snows harder while gusting")
+	t.check(_freeze_rate(t, tail, true) > fast * 1.2, "Tailwind keeps your snow thick while gusting")
 	var wake := base.duplicate()
 	wake["snow_wake"] = 1
 	var w_on := _freeze_rate(t, wake, true, 10.0)
@@ -123,7 +159,7 @@ func _keystones(t) -> void:
 	var slope := Vector2.INF
 	for k in 4000:
 		var q := Vector2(-200 + (k % 80) * 5.0, -230 + (k / 80) * 5.0)
-		if terrain.slope(q.x, q.y) > 0.25 and not terrain.is_water(q.x, q.y):
+		if terrain.slope(q.x, q.y) > 0.25 and not terrain.is_water(q.x, q.y) and terrain.coast_at(q.x, q.y) > 70.0:
 			slope = q
 			break
 	t.check(slope != Vector2.INF, "test world has a slope")
@@ -149,7 +185,7 @@ func _skills(t) -> void:
 	t.check(w.use_skill("squall", Vector2.UP) == "", "Squall fires")
 	t.check(w.use_skill("squall", Vector2.UP) == "Recharging", "Squall then recharges")
 	_run(w, 2.0)
-	t.check(float(w.area_by_source.get("squall", 0.0)) > 40.0, "Squall freezes a ring of ground (%.0f m²)" % float(w.area_by_source.get("squall", 0.0)))
+	t.check(float(w.area_by_source.get("squall", 0.0)) > 25.0, "Squall freezes a ring of ground (%.0f m²)" % float(w.area_by_source.get("squall", 0.0)))
 	t.check(w.use_skill("frost_wave", Vector2(1, 0)) == "", "Frost Wave fires")
 	_run(w, 3.0)
 	t.check(float(w.area_by_source.get("frost_wave", 0.0)) > 100.0, "Frost Wave freezes a strip ahead")
@@ -185,8 +221,10 @@ func _companions(t) -> void:
 		far = maxf(far, k.pos.distance_to(c.pos))
 	t.check(far < c.radius * 4.0 + 6.0, "cloudlets keep up with you (%.1f m)" % far)
 	prog.levels["wanderers"] = 1
+	for k in 8:
+		c.move_input = Vector2(0.3 if k % 2 == 0 else -0.3, 0)
+		_run(w, 1.0)
 	c.move_input = Vector2.ZERO
-	_run(w, 8.0)
 	var spread := 0.0
 	for k in c.cloudlets:
 		spread = maxf(spread, k.pos.distance_to(c.pos))

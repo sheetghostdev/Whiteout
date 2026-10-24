@@ -22,9 +22,12 @@ var region := PackedByteArray()
 var water := PackedByteArray()
 var water_cells := PackedInt32Array()
 var water_rate := PackedFloat32Array()   # per water cell creep multiplier (rivers are fast)
+var void_cells := PackedByteArray()      # 1 = open sea: always "done", never paid, drawn as water
+var land_per_chunk := PackedInt32Array()
 
 var chunk_incomplete := PackedInt32Array()
 var chunk_dirty := PackedByteArray()
+var fill_dirty := PackedByteArray()      # chunks touched since the last drift-fill pass
 var any_dirty := false
 
 var region_sum := PackedFloat64Array()
@@ -51,6 +54,9 @@ func setup(terrain: TerrainData) -> void:
 	exposure.resize(count)
 	region = terrain.cell_region.duplicate()
 	water = terrain.cell_water.duplicate()
+	void_cells = terrain.cell_ocean.duplicate()
+	land_per_chunk.resize(CH * CH)
+	land_per_chunk.fill(0)
 	region_sum.resize(REGION_COUNT)
 	region_sum.fill(0.0)
 	region_total.resize(REGION_COUNT)
@@ -58,8 +64,15 @@ func setup(terrain: TerrainData) -> void:
 	total_reward = 0.0
 	var wc: Array[int] = []
 	var wr: Array[float] = []
+	var land := 0
 	for i in count:
 		var r := region[i]
+		if void_cells[i] == 1:
+			reward[i] = 0.0
+			exposure[i] = 0.0
+			continue
+		land += 1
+		land_per_chunk[((i / N) / CS) * CH + (i % N) / CS] += 1
 		var is_w := water[i] == 1
 		reward[i] = GameBalance.WATER_REWARD if is_w else GameBalance.REGION_REWARD[r]
 		exposure[i] = GameBalance.WATER_EXPOSURE if is_w else GameBalance.REGION_EXPOSURE[r]
@@ -73,26 +86,35 @@ func setup(terrain: TerrainData) -> void:
 			wr.append(4.0 if terrain.river_dist[vi] < 8.0 else 1.0)
 	water_cells = PackedInt32Array(wc)
 	water_rate = PackedFloat32Array(wr)
-	total_cells = count
-	total_sum = 0.0
-	total_incomplete = count
-	chunk_incomplete.resize(CH * CH)
-	chunk_incomplete.fill(CS * CS)
+	total_cells = land
 	chunk_dirty.resize(CH * CH)
-	chunk_dirty.fill(1)
-	any_dirty = true
+	fill_dirty.resize(CH * CH)
+	fill_dirty.fill(0)
 	tex_bytes.resize(count)
 	tex_bytes.fill(0)
+	reset()
 
 
 func reset() -> void:
 	cov.fill(0.0)
+	_apply_void()
 	region_sum.fill(0.0)
 	total_sum = 0.0
 	total_incomplete = total_cells
-	chunk_incomplete.fill(CS * CS)
+	chunk_incomplete = land_per_chunk.duplicate()
 	chunk_dirty.fill(1)
 	any_dirty = true
+
+
+## Sea cells are held at full coverage so every loop skips them.
+func _apply_void() -> void:
+	for i in void_cells.size():
+		if void_cells[i] == 1:
+			cov[i] = 1.0
+
+
+func is_void(i: int) -> bool:
+	return void_cells[i] == 1
 
 
 # ------------------------------------------------------------------ queries
@@ -125,7 +147,7 @@ func get_coverage_gradient(x: float, z: float) -> Vector2:
 
 
 func world_completion() -> float:
-	return total_sum / float(total_cells)
+	return minf(total_sum / float(total_cells), 1.0)
 
 
 func region_completion(r: int) -> float:
@@ -227,6 +249,7 @@ func unfrozen_patches(limit: int) -> Array[Vector3]:
 # ---------------------------------------------------------------- mutation
 func _mark_chunk(ch: int) -> void:
 	chunk_dirty[ch] = 1
+	fill_dirty[ch] = 1
 	any_dirty = true
 
 
@@ -308,8 +331,11 @@ func apply_disc(cx: float, cz: float, r: float, amount: float, stride: int = 1, 
 
 
 ## Swept rectangle from A to B (half-open along the path) with soft sides.
-## Each cell swept once receives `amount` (used by fronts, avalanches, gusts).
-func apply_sweep(ax: float, az: float, bx: float, bz: float, hw: float, amount: float) -> float:
+## Each cell swept once receives `amount` (used by the cloud, fronts,
+## avalanches). `soft_from` is the fraction of the half-width at full
+## strength; cells reaching `snap` jump straight to fully frozen.
+func apply_sweep(ax: float, az: float, bx: float, bz: float, hw: float, amount: float,
+		soft_from: float = 0.7, snap: float = FULL_SNAP) -> float:
 	last_cov_delta = 0.0
 	last_new_full = 0
 	var dx0 := bx - ax
@@ -327,7 +353,7 @@ func apply_sweep(ax: float, az: float, bx: float, bz: float, hw: float, amount: 
 	var z1 := mini(N - 1, int(floor(maxf(az, bz) + HALF + hw)))
 	if x0 > x1 or z0 > z1:
 		return 0.0
-	var soft := hw * 0.7
+	var soft := hw * clampf(soft_from, 0.0, 0.98)
 	var soft_den := hw - soft
 	var gain := 0.0
 	var dsum := 0.0
@@ -362,7 +388,7 @@ func apply_sweep(ax: float, az: float, bx: float, bz: float, hw: float, amount: 
 					if lat > soft:
 						w = (hw - lat) / soft_den
 					var nc := c + amount * w * exposure[i]
-					if nc >= FULL_SNAP:
+					if nc >= snap:
 						nc = 1.0
 						done += 1
 					cov[i] = nc
@@ -502,6 +528,48 @@ func water_spread_tick(dt: float, rate: float) -> float:
 	return gain
 
 
+## Drifting snow: in chunks that were snowed on recently, any cell that is
+## mostly surrounded by frozen ground (5 of 8 neighbours, or 4 when already
+## half white) freezes too - so 1 m slivers between passes and single
+## missed specks fill themselves in, while real gaps wait for another pass.
+## Processes at most `budget` chunks per call. Returns the Frost gained.
+func drift_fill(budget: int) -> float:
+	var gain := 0.0
+	var done := 0
+	for ch in CH * CH:
+		if fill_dirty[ch] == 0:
+			continue
+		fill_dirty[ch] = 0
+		if chunk_incomplete[ch] == 0:
+			continue
+		done += 1
+		var bx := (ch % CH) * CS
+		var bz := (ch / CH) * CS
+		for z in range(bz, bz + CS):
+			for x in range(bx, bx + CS):
+				var i := z * N + x
+				if cov[i] >= 1.0:
+					continue
+				var frozen_n := 0
+				var seen := 0
+				for oz in range(-1, 2):
+					var nz := z + oz
+					if nz < 0 or nz >= N:
+						continue
+					for ox in range(-1, 2):
+						var nx := x + ox
+						if (ox == 0 and oz == 0) or nx < 0 or nx >= N:
+							continue
+						seen += 1
+						if cov[nz * N + nx] >= 0.9:
+							frozen_n += 1
+				if frozen_n >= 5 or frozen_n == seen or (frozen_n >= 4 and cov[i] >= 0.5):
+					gain += _set_cell(i, 1.0)
+		if done >= budget:
+			break
+	return gain
+
+
 ## Fills tiny isolated holes that are visually insignificant. Only touches
 ## cells whose eight neighbours are all essentially frozen.
 func cleanup_pass() -> float:
@@ -584,7 +652,7 @@ func update_texture() -> bool:
 		for z in range(bz, bz + CS):
 			var row := z * N
 			for x in range(bx, bx + CS):
-				tex_bytes[row + x] = int(cov[row + x] * 255.0)
+				tex_bytes[row + x] = 0 if void_cells[row + x] == 1 else int(cov[row + x] * 255.0)
 	any_dirty = false
 	image.set_data(N, N, false, Image.FORMAT_R8, tex_bytes)
 	texture.update(image)
@@ -610,6 +678,9 @@ func deserialize(data: PackedByteArray) -> bool:
 	total_incomplete = 0
 	chunk_incomplete.fill(0)
 	for i in N * N:
+		if void_cells[i] == 1:
+			cov[i] = 1.0
+			continue
 		var c := float(raw.decode_u16(i * 2)) / 65535.0
 		if c >= FULL_SNAP:
 			c = 1.0

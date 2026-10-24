@@ -9,7 +9,15 @@ func run(t, _full: bool) -> void:
 	var cov := SnowCoverage.new()
 	cov.setup(terrain)
 	t.check(cov.world_completion() == 0.0, "fresh world starts unfrozen")
-	t.check(cov.total_incomplete == SnowCoverage.N * SnowCoverage.N, "all cells start incomplete")
+	t.check(cov.total_incomplete == cov.total_cells, "all land cells start incomplete")
+	var sea := 0
+	for i in SnowCoverage.N * SnowCoverage.N:
+		if cov.is_void(i):
+			sea += 1
+	t.check(sea > 20000 and cov.total_cells + sea == SnowCoverage.N * SnowCoverage.N, "the sea around the island is not part of the land (%d sea cells)" % sea)
+	t.check(terrain.is_ocean(250, 250) and terrain.is_ocean(-250, 0) and not terrain.is_ocean(0, 60), "the world edge is open sea, the middle is land")
+	var sea_gain := cov.apply_disc(0, 250, 6.0, 1.0)
+	t.check(sea_gain == 0.0 and cov.last_cov_delta == 0.0, "snow on the open sea pays nothing")
 
 	# Gradual accumulation, never instant.
 	var p := Vector2(0, 60)
@@ -76,12 +84,31 @@ func run(t, _full: bool) -> void:
 	t.approx(c4.total_sum, c5.total_sum, 0.5, "interleaved large-storm updates match full updates")
 
 	# Searches.
+	# Drifting snow closes slivers between passes but never eats open ground.
+	var dr := SnowCoverage.new()
+	dr.setup(terrain)
+	dr.apply_sweep(-40, 60, 40, 60, 4.0, 1.0, 0.98)
+	dr.apply_sweep(-40, 69.6, 40, 69.6, 4.0, 1.0, 0.98)
+	var bare := dr.get_coverage(0, 64.8)
+	for k in 6:
+		dr.drift_fill(64)
+	t.check(bare == 0.0 and dr.get_coverage(0, 64.8) == 0.0, "a real 2 m gap with no snow is left for you to fly over")
+	# A 1 m line missed between two passes closes up by itself.
+	dr.apply_sweep(-40, 70.0, 40, 70.0, 5.0, 1.0, 0.98)
+	var sliver := dr.get_coverage(0, 64.8)
+	for k in 6:
+		dr.drift_fill(64)
+	t.check(sliver < 1.0 and dr.get_coverage(0, 64.8) == 1.0, "a 1 m sliver between two passes fills itself in (%.2f)" % dr.get_coverage(0, 64.8))
+	t.check(dr.get_coverage(0, 76.0) == 0.0, "open green ground beside a pass stays green")
+	_consistency(t, dr, "after drift fill")
+
 	var cov6 := SnowCoverage.new()
 	cov6.setup(terrain)
 	for k in 3:
 		cov6.apply_disc(0, 0, 400.0, 1.0)   # freeze (almost) everything
 	t.check(cov6.world_completion() > 0.98, "huge disc freezes most of the world")
 	var hole := Vector2(-150, 40)
+	t.check(cov6.world_completion() <= 1.0, "completion never exceeds 100%")
 	var nearest := cov6.find_nearest_unfrozen_area(hole + Vector2(5, 5), 1.0e9, 1)
 	if cov6.total_incomplete > 0:
 		t.check(nearest != Vector2.INF, "unfrozen search finds remaining corners")
@@ -97,7 +124,7 @@ func run(t, _full: bool) -> void:
 	var almost := SnowCoverage.new()
 	almost.setup(terrain)
 	almost.freeze_all()
-	for i in [1000, 50000, 120000]:
+	for i in [130000, 140000, 150000]:
 		almost.cov[i] = 0.0
 	almost.deserialize(almost.serialize())
 	t.check(almost.is_world_complete(), "three isolated specks do not block completion")
@@ -135,7 +162,7 @@ func run(t, _full: bool) -> void:
 		t.check(g > 0.0, "ice creep earns Frost")
 		var land_frozen := 0
 		for i in SnowCoverage.N * SnowCoverage.N:
-			if w.water[i] == 0 and w.cov[i] > 0.0:
+			if w.water[i] == 0 and w.cov[i] > 0.0 and not w.is_void(i):
 				land_frozen += 1
 		t.check(land_frozen == 0, "ice creep never touches land")
 
@@ -149,6 +176,7 @@ func run(t, _full: bool) -> void:
 	tx.update_texture()
 	t.check(tx.tex_bytes[tx.cell_index(10, 10)] == 255, "texture byte matches frozen cell")
 	t.check(not tx.any_dirty, "upload clears dirty flags")
+	t.check(tx.tex_bytes[tx.cell_index(250, 250)] == 0, "the sea is drawn as open water")
 
 
 func _consistency(t, cov: SnowCoverage, label: String) -> void:
@@ -159,6 +187,8 @@ func _consistency(t, cov: SnowCoverage, label: String) -> void:
 	var chunk := PackedInt32Array()
 	chunk.resize(SnowCoverage.CH * SnowCoverage.CH)
 	for i in SnowCoverage.N * SnowCoverage.N:
+		if cov.is_void(i):
+			continue
 		var c := cov.cov[i]
 		rs[cov.region[i]] += c
 		total += c

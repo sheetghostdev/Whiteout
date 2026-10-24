@@ -42,9 +42,9 @@ func run(t, full: bool) -> void:
 			t.check(sk.has("frost_wave"), "standard: unlocks Frost Wave")
 			t.check(sk.has("vortex_form") and float(sk["vortex_form"]) < float(res["time"]) * 0.8, "standard: Vortex Form arrives with real work left")
 			# The bot always flies straight to the nearest green ground and never
-			# pauses; ~25 bot-minutes is roughly 45-60 minutes for a person.
-			t.check(float(res["time"]) > 18.0 * 60.0 and float(res["time"]) < 40.0 * 60.0, "standard: bot completion time in the tuned window (%s)" % UIKit.fmt_time(res["time"]))
-			t.check(float(res["spent_fraction"]) > 0.6, "standard: most of the web is bought by the end (%d%%)" % int(float(res["spent_fraction"]) * 100.0))
+			# pauses; ~15 bot-minutes is roughly 30-45 minutes for a person.
+			t.check(float(res["time"]) > 12.0 * 60.0 and float(res["time"]) < 35.0 * 60.0, "standard: bot completion time in the tuned window (%s)" % UIKit.fmt_time(res["time"]))
+			t.check(float(res["spent_fraction"]) > 0.55, "standard: most of the web is bought by the end (%d%%)" % int(float(res["spent_fraction"]) * 100.0))
 
 
 func _print_row(r: Dictionary) -> void:
@@ -69,4 +69,4 @@ func _print_row(r: Dictionary) -> void:
 	var sp: Array[String] = []
 	for k in src:
 		sp.append("%s %s" % [k, UIKit.fmt(float(src[k]))])
-	print("        frozen by (m²): ", "  ".join(sp), "  of ", UIKit.fmt(SnowCoverage.N * SnowCoverage.N))
+	print("        frozen by (m²): ", "  ".join(sp), "  drifts+ice ", UIKit.fmt(float(r.get("land", 0.0)) - tot), "  of ", UIKit.fmt(float(r.get("land", 0.0))))

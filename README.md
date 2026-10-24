@@ -1,7 +1,7 @@
 # WHITEOUT
 
 A relaxing but increasingly spectacular incremental game about burying a
-living green world under snow and ice. You *are* the snow cloud: snow falls
+living green island under snow and ice. You *are* the snow cloud: snow falls
 wherever you drift, and you grow into a storm as you go. Built with
 **Godot 4.7** and GDScript.
 
@@ -40,11 +40,14 @@ All bindings can be changed in Settings → Controls.
 
 ## The game in brief
 
-- **Goal:** freeze 100% of the 512 × 512 m world. Green means unfinished,
-  white means done; the landscape itself is the progress bar.
-- **You are the cloud.** Snow falls under you continuously. Linger to freeze
-  ground solid, drift on to fresh green. Each square metre pays **Frost**
-  only once.
+- **Goal:** freeze 100% of the island (about 174,000 m² of land in a wide
+  sea). Green means unfinished, white means done; the landscape itself is
+  the progress bar.
+- **You are the cloud.** Every pass you make lays an even layer of snow
+  along your path; a few passes (or one, once you are strong) freeze the
+  ground solid. Resting lays nothing and earns nothing. Each square metre
+  pays **Frost** only once, and snow drifts into thin slivers and single
+  missed specks between your passes by itself.
 - **One currency, one upgrade web.** Frost buys nodes in a web of 47
   upgrades across seven branches: Size, Snowfall, Wind, Cloudlets, Storm
   skills, The Land and Polar. Finishing a node reveals only its neighbours,
@@ -56,8 +59,15 @@ All bindings can be changed in Settings → Controls.
 - **Three active skills** keep your hands busy to the end: Squall (a ring of
   snow), Frost Wave (a rolling strip of frost where you look) and Vortex
   Form (swell to several times your size for a few seconds).
-- **Four regions:** Central Meadows, Woodland, Lake District, Highlands.
-  Lakes and rivers freeze with spreading ice; rivers freeze fastest.
+- **The island:** Central Meadows, Woodland, Lake District and Highlands,
+  ringed by beaches and rocky shores, with distant islands on the horizon.
+  A mountain stream runs from a tarn down to the lake, and the lake drains
+  to the sea through a river. Lakes and rivers freeze with spreading ice
+  while you are out flying.
+- **People:** a village with a church and a well, a lakeside hamlet with a
+  pier, and a farm with a barn, fields, fences and hay. Villagers stroll the
+  roads; once snow settles around them they slow down, hug themselves,
+  stamp their feet and shiver. Snow settles on roofs and chimneys smoke.
   Regional milestones pay Frost; world milestones bring new, bigger nodes
   within reach.
 - **Ending:** when the world is frozen, a camera flight shows the ice age,
@@ -95,7 +105,7 @@ project.godot            engine config, autoloads, global shader params
 scenes/                  main.tscn (game), tests.tscn, visual_tour.tscn, load_all.tscn
 shaders/                 terrain, water, foliage, tree, cloud, decal, effect, sky, backdrop, map
 scripts/core/            balance tables, progression/economy, save, settings, input, game flow
-scripts/world/           terrain data, snow coverage, regions, mesh factory, renderers, foliage
+scripts/world/           island terrain, snow coverage, regions, renderers, foliage, settlements, villagers
 scripts/weather/         weather manager, the player cloud, skills' effects, FX helpers
 scripts/player/          third-person cloud controller and camera
 scripts/ui/              HUD, upgrade web, menus, map, guide, completion, procedural icons
@@ -110,7 +120,14 @@ Key systems:
   truth: a 1 m grid of 0..1 coverage with per-region sums, per-chunk
   incomplete counts (fully frozen chunks are skipped), one-time rewards, and
   a dirty-chunk GPU texture that every shader samples through one shared
-  snow-mask function — so what looks frozen *is* frozen.
+  snow-mask function — so what looks frozen *is* frozen. Sea cells are
+  "void": never counted, never paid, always drawn as open water. Shaders
+  sample it with a cubic B-spline plus a meandering warp, so the 1 m grid
+  never shows as squares or ruled lines.
+- **TerrainData** shapes the island (coast distance, beaches, mountains that
+  run down to the sea, a tarn-fed stream, the lake and its outlet) and
+  levels pads for the **SettlementPlan**. Water is one mesh following the
+  computed water level of every vertex, so it can never float over land.
 - **WeatherManager** runs a fixed 30 Hz simulation. The player cloud moves
   every tick for crisp steering; other effects step every third tick,
   staggered by id, so heavy storms spread their cost across frames. Visuals
@@ -138,19 +155,20 @@ godot --headless --path . res://scenes/tests.tscn -- only=cloud     # one suite
 The balancing bot (`scripts/tests/balance_bot.gd`) plays the real
 simulation: it flies the cloud to the nearest green ground, drifts slowly
 over it to paint, gusts between patches, fires skills when they would hit
+green ground, mows across it in passes, fires skills when they would hit
 green ground, and shops by strategy (cheapest first, spread across
 branches, random, saving up, skills last). With the current tuning every
-strategy completes the world in about 18–23 bot-minutes. The first
-purchase lands within seconds, and there is never more than about a minute
-without an affordable upgrade. About 70–75% of the web gets bought, with
-6 open choices on average (10 at most). The bot always knows where the
+strategy completes the island in about 15–17 bot-minutes. The first
+purchase lands within seconds, and there is never much more than a minute
+without an affordable upgrade. About 60% of the web gets bought, with about
+6 open choices on average (11 at most). The bot always knows where the
 nearest green is and never pauses, so a person should take noticeably
-longer (roughly 40–60 minutes); that still needs real playtesting to
+longer (roughly 30–45 minutes); that still needs real playtesting to
 confirm.
 
 `scenes/visual_tour.tscn` boots the game, performs scripted actions and
 saves screenshots to `user://tour/` (scenarios: `basic`, `fx`, `late`,
-`ui`, `complete`).
+`ui`, `complete`, `island`, `snowcheck`).
 
 ## Performance notes
 

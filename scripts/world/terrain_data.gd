@@ -1,6 +1,8 @@
 class_name TerrainData
 extends RefCounted
-## Seeded, deterministic description of the world's shape.
+## Seeded, deterministic description of the world's shape: an island in a
+## wide sea, with mountains in the north, a lake and woods, and the roads,
+## village, hamlet and farm of the people who live there.
 ##
 ## Heights live on a (N+1)x(N+1) vertex grid with 1 m spacing that spans
 ## [-256, 256] on X and Z. Coverage cells are the N x N squares between
@@ -10,6 +12,7 @@ extends RefCounted
 const N := GameBalance.WORLD_SIZE
 const V := N + 1
 const HALF := GameBalance.WORLD_HALF
+const SEA_LEVEL := 0.0
 const LAKE_LEVEL := 5.0
 const LAKE_CENTER := Vector2(135.0, -5.0)
 const SPAWN := Vector2(3.0, 84.0)
@@ -26,7 +29,12 @@ var water_level := PackedFloat32Array()  # V*V, -1000 where no water body
 var river_dist := PackedFloat32Array()   # V*V distance to nearest river centre
 var path_dist := PackedFloat32Array()    # V*V distance to nearest footpath
 var cell_region := PackedByteArray()     # N*N
-var cell_water := PackedByteArray()      # N*N, 1 = water surface cell
+var cell_water := PackedByteArray()      # N*N, 1 = inland water surface cell
+var cell_ocean := PackedByteArray()      # N*N, 1 = open sea (not part of the playable land)
+var flow := PackedVector2Array()         # V*V river flow direction * speed (zero on still water)
+var coast := PackedFloat32Array()        # V*V distance inland from the coast (negative at sea)
+var cell_built := PackedByteArray()      # N*N, 1 = building or yard, 2 = farm field
+var settlements := SettlementPlan.new()
 var rivers: Array = []                   # Array of {"points": PackedVector3Array (x, water_y, z), "widths": PackedFloat32Array}
 var min_height := 0.0
 var max_height := 0.0
@@ -79,13 +87,23 @@ func highland_mask(x: float, z: float) -> float:
 	return _smooth(-70.0, -185.0, z + r * 16.0 + _n_warp.get_noise_2d(x * 0.7, 40.0) * 22.0)
 
 
+## Distance inland from the coast (negative out at sea). The island is a
+## rounded square, warped by noise into bays and headlands.
+func coast_distance(x: float, z: float) -> float:
+	var wx := x + _n_warp.get_noise_2d(x * 1.3 + 900.0, z * 1.3) * 16.0
+	var wz := z + _n_warp.get_noise_2d(x * 1.3, z * 1.3 - 700.0) * 16.0
+	var r := pow(pow(absf(wx), 4.0) + pow(absf(wz), 4.0), 0.25)
+	var reach := 212.0 + _n_broad.get_noise_2d(x * 0.7 + 400.0, z * 0.7) * 12.0 + _n_detail.get_noise_2d(x * 0.3, z * 0.3) * 3.0
+	return reach - r
+
+
 func lake_distance(x: float, z: float) -> float:
 	var dx := (x - LAKE_CENTER.x)
 	var dz := (z - LAKE_CENTER.y) / 0.82
 	return sqrt(dx * dx + dz * dz) + _n_warp.get_noise_2d(x * 2.0 + 300.0, z * 2.0) * 12.0
 
 
-func _raw_height(x: float, z: float) -> float:
+func _raw_height(x: float, z: float, cd: float) -> float:
 	var wx := x + _n_warp.get_noise_2d(x, z) * 18.0
 	var wz := z + _n_warp.get_noise_2d(x + 517.0, z - 291.0) * 18.0
 	var broad := _n_broad.get_noise_2d(wx, wz)
@@ -102,7 +120,9 @@ func _raw_height(x: float, z: float) -> float:
 	if hl > 0.0:
 		var ridge := clampf(_n_ridge.get_noise_2d(wx, wz) * 0.5 + 0.5, 0.0, 1.0)
 		var mount := 10.0 + pow(ridge, 1.7) * 62.0 + broad * 10.0 + roll * 4.0
-		mount += _smooth(-150.0, -256.0, wz) * 30.0
+		mount += _smooth(-120.0, -175.0, wz) * 24.0
+		# Mountains run down to the sea rather than off the edge of the world.
+		mount *= _smooth(0.0, 50.0, cd)
 		h += pow(hl, 1.25) * mount
 
 	# Observation hills.
@@ -118,18 +138,20 @@ func _raw_height(x: float, z: float) -> float:
 	var ld := lake_distance(x, z)
 	var basin := _smooth(80.0, 38.0, ld)
 	if basin > 0.0:
-		var floor_h := LAKE_LEVEL - 1.2 - 5.5 * _smooth(52.0, 5.0, ld)
+		var floor_h := maxf(LAKE_LEVEL - 1.2 - 5.5 * _smooth(52.0, 5.0, ld), 0.6)
 		h = lerpf(h, minf(h, floor_h), basin)
-
-	# Gentle rim at the world edge frames the playable area.
-	var e := maxf(absf(x), absf(z))
-	var rim := _smooth(200.0, 256.0, e)
-	h += rim * rim * (20.0 + broad * 8.0)
 
 	# Flatten the starting meadow a little so the first minutes are comfortable.
 	var sd := Vector2(x, z).distance_to(SPAWN)
 	var flat := _smooth(40.0, 10.0, sd)
 	h = lerpf(h, 10.5 + detail * 0.25 + roll * 0.6, flat * 0.7)
+
+	# Coast: land eases down to sandy beaches, then shelves away under the sea.
+	if cd > 0.0:
+		var beach := 0.9 + detail * 0.3 + maxf(roll, 0.0) * 0.5
+		h = lerpf(beach, h, _smooth(1.0, lerpf(28.0, 12.0, hl), cd))
+	else:
+		h = lerpf(0.5, -12.0, _smooth(0.0, -34.0, cd))
 	return h
 
 
@@ -143,14 +165,22 @@ func generate(p_seed: int) -> void:
 	water_level.fill(-1000.0)
 	river_dist.fill(1.0e6)
 	path_dist.fill(1.0e6)
+	flow.resize(V * V)
+	flow.fill(Vector2.ZERO)
+	coast.resize(V * V)
 	for j in V:
 		var z := -HALF + j
 		var row := j * V
 		for i in V:
-			heights[row + i] = _raw_height(-HALF + i, z)
+			var cd := coast_distance(-HALF + i, z)
+			coast[row + i] = cd
+			heights[row + i] = _raw_height(-HALF + i, z, cd)
+	settlements.plan(p_seed)
+	_level_settlements()
 	_build_rivers()
 	_build_paths()
 	_build_lake_water()
+	_build_sea()
 	_classify_cells()
 	min_height = 1.0e9
 	max_height = -1.0e9
@@ -193,11 +223,13 @@ func _resample(line: PackedVector2Array, step: float) -> PackedVector2Array:
 
 
 func _build_rivers() -> void:
+	# A mountain stream flows from a tarn down to the lake; the lake drains
+	# to the sea through a wider river in the south-east.
 	var defs := [
-		{"pts": [Vector2(-8, -150), Vector2(18, -128), Vector2(50, -112), Vector2(74, -86),
-			Vector2(96, -64), Vector2(114, -42), Vector2(126, -24)], "w0": 3.2, "w1": 5.0, "start": -1.0, "end": LAKE_LEVEL},
-		{"pts": [Vector2(158, 30), Vector2(170, 74), Vector2(160, 118), Vector2(140, 160),
-			Vector2(156, 200), Vector2(182, 236), Vector2(196, 276)], "w0": 5.5, "w1": 4.6, "start": LAKE_LEVEL, "end": LAKE_LEVEL - 2.6},
+		{"pts": [Vector2(-34, -150), Vector2(-10, -140), Vector2(18, -126), Vector2(50, -112), Vector2(74, -86),
+			Vector2(96, -64), Vector2(114, -42), Vector2(126, -24)], "w0": 2.6, "w1": 5.0, "start": -1.0, "end": LAKE_LEVEL, "tarn": true},
+		{"pts": [Vector2(158, 30), Vector2(172, 72), Vector2(164, 112), Vector2(150, 146),
+			Vector2(158, 172), Vector2(172, 192), Vector2(188, 212)], "w0": 5.5, "w1": 6.5, "start": LAKE_LEVEL, "end": SEA_LEVEL},
 	]
 	rivers.clear()
 	for d in defs:
@@ -223,7 +255,7 @@ func _build_rivers() -> void:
 			wl[k] = w
 			widths[k] = lerpf(d["w0"], d["w1"], t)
 		# Smooth the profile so the surface has no steps, keeping it monotonic.
-		for _pass in 6:
+		for _pass in (24 if d["start"] < 0.0 else 6):
 			for k in range(1, n - 1):
 				wl[k] = minf(wl[k - 1], (wl[k - 1] + wl[k] + wl[k + 1]) / 3.0)
 		var pts3 := PackedVector3Array()
@@ -232,6 +264,10 @@ func _build_rivers() -> void:
 			pts3[k] = Vector3(line[k].x, wl[k], line[k].y)
 		rivers.append({"points": pts3, "widths": widths})
 		_carve_river(pts3, widths)
+		if d.get("tarn", false):
+			var head := Vector2(pts3[0].x, pts3[0].z)
+			var down := (Vector2(pts3[3].x, pts3[3].z) - head).normalized()
+			_carve_tarn(head - down * 9.0, 12.0, pts3[0].y)
 
 
 func _carve_river(pts: PackedVector3Array, widths: PackedFloat32Array) -> void:
@@ -242,6 +278,8 @@ func _carve_river(pts: PackedVector3Array, widths: PackedFloat32Array) -> void:
 	near_w.fill(0.0)
 	var near_hw := PackedFloat32Array()
 	near_hw.resize(V * V)
+	var near_dir := PackedVector2Array()
+	near_dir.resize(V * V)
 	var local_d := PackedFloat32Array()
 	local_d.resize(V * V)
 	local_d.fill(1.0e6)
@@ -259,6 +297,10 @@ func _carve_river(pts: PackedVector3Array, widths: PackedFloat32Array) -> void:
 					local_d[idx] = dd
 					near_w[idx] = p.y
 					near_hw[idx] = widths[k]
+					var nxt := pts[mini(k + 1, pts.size() - 1)]
+					var prv := pts[maxi(k - 1, 0)]
+					var drop := maxf(prv.y - nxt.y, 0.0)
+					near_dir[idx] = Vector2(nxt.x - prv.x, nxt.z - prv.z).normalized() * (0.35 + minf(drop * 2.0, 1.2))
 	for idx in V * V:
 		var dd := local_d[idx]
 		if dd > reach:
@@ -269,9 +311,14 @@ func _carve_river(pts: PackedVector3Array, widths: PackedFloat32Array) -> void:
 		var hw := near_hw[idx]
 		var h := heights[idx]
 		var target: float
+		if dd < hw + 2.0:
+			flow[idx] = near_dir[idx]
 		if dd < hw:
 			var q := dd / hw
 			target = w - 1.7 * (1.0 - q * q)
+			# Inland channels stay above the sea floor so no sea shows through.
+			if w > 1.0:
+				target = maxf(target, 0.15)
 			h = minf(h, target)
 			water_level[idx] = maxf(water_level[idx], w)
 		else:
@@ -283,16 +330,70 @@ func _carve_river(pts: PackedVector3Array, widths: PackedFloat32Array) -> void:
 		heights[idx] = h
 
 
+## A small mountain lake where the stream is born.
+func _carve_tarn(c: Vector2, r: float, level: float) -> void:
+	var reach := int(r * 1.6) + 2
+	var ci := int(round(c.x + HALF))
+	var cj := int(round(c.y + HALF))
+	for j in range(maxi(cj - reach, 0), mini(cj + reach, V - 1) + 1):
+		for i in range(maxi(ci - reach, 0), mini(ci + reach, V - 1) + 1):
+			var p := Vector2(-HALF + i, -HALF + j)
+			var wob := _n_detail.get_noise_2d(p.x * 3.0, p.y * 3.0) * 2.0
+			var dd := p.distance_to(c) + wob
+			var idx := j * V + i
+			var h := heights[idx]
+			if dd < r:
+				var q := dd / r
+				h = minf(h, level - 0.4 - 2.6 * (1.0 - q * q))
+				water_level[idx] = maxf(water_level[idx], level)
+			elif dd < r * 1.6:
+				# A raised rim holds the tarn; the outlet stream keeps its own
+				# (lower) water so no sheet of tarn water hangs over it.
+				var t := _smooth(r, r * 1.6, dd)
+				if water_level[idx] < -100.0:
+					h = maxf(h, lerpf(level + 0.4, h, t))
+					if dd < r + 1.0:
+						water_level[idx] = level
+			heights[idx] = h
+
+
+## Level building pads and soften fields into the land.
+func _level_settlements() -> void:
+	for b in settlements.buildings:
+		var pos: Vector2 = b["pos"]
+		var s: Vector3 = b["size"]
+		var pad := sample_height(pos.x, pos.y)
+		var reach := maxf(s.x, s.z) * 0.5 + 6.0
+		var ci := int(round(pos.x + HALF))
+		var cj := int(round(pos.y + HALF))
+		var rr := int(reach) + 1
+		for j in range(maxi(cj - rr, 0), mini(cj + rr, V - 1) + 1):
+			for i in range(maxi(ci - rr, 0), mini(ci + rr, V - 1) + 1):
+				var local := (Vector2(-HALF + i, -HALF + j) - pos).rotated(b["rot"])
+				var ex := maxf(absf(local.x) - s.x * 0.5 - 1.5, 0.0)
+				var ez := maxf(absf(local.y) - s.z * 0.5 - 1.5, 0.0)
+				var t := _smooth(0.0, 4.5, sqrt(ex * ex + ez * ez))
+				var idx := j * V + i
+				heights[idx] = lerpf(pad, heights[idx], t)
+
+
+## Open sea: water at sea level over every vertex below it near the coast.
+func _build_sea() -> void:
+	for j in V:
+		var z := -HALF + j
+		for i in V:
+			var idx := j * V + i
+			if heights[idx] < SEA_LEVEL + 0.3 and water_level[idx] < -100.0 and coast[idx] < 30.0:
+				water_level[idx] = SEA_LEVEL
+
+
 # ------------------------------------------------------------------- paths
 func _build_paths() -> void:
-	var defs := [
-		[TRAILHEAD, Vector2(-22, 96), Vector2(-46, 122)],
-		[TRAILHEAD, Vector2(30, 52), Vector2(66, 36), Vector2(92, 40)],
-		[TRAILHEAD, Vector2(-40, 50), Vector2(-90, 34), Vector2(-138, 18)],
-		[TRAILHEAD, Vector2(6, 20), Vector2(14, -30), Vector2(30, -78)],
-	]
-	for d in defs:
-		var line := _resample(_catmull(d, 12), 1.5)
+	for road in settlements.roads:
+		var pts: Array = []
+		for p in road:
+			pts.append(p)
+		var line := _resample(_catmull(pts, 12), 1.5)
 		for p in line:
 			var ci := int(round(p.x + HALF))
 			var cj := int(round(p.y + HALF))
@@ -318,6 +419,8 @@ func _build_lake_water() -> void:
 func _classify_cells() -> void:
 	cell_region.resize(N * N)
 	cell_water.resize(N * N)
+	cell_ocean.resize(N * N)
+	cell_built.resize(N * N)
 	for cj in N:
 		var z := -HALF + cj + 0.5
 		for ci in N:
@@ -334,7 +437,15 @@ func _classify_cells() -> void:
 				r = REGION_LAKE
 			cell_region[idx] = r
 			var wl := sample_water_level(x, z)
-			cell_water[idx] = 1 if wl > -100.0 and h < wl - 0.05 else 0
+			var sea := h < SEA_LEVEL + 0.05 and coast_at(x, z) < 30.0 and wl <= SEA_LEVEL + 0.01
+			var built := 0
+			if settlements.building_at(Vector2(x, z), 3.0):
+				built = 1
+			elif not settlements.field_at(Vector2(x, z), 1.0).is_empty():
+				built = 2
+			cell_built[idx] = built
+			cell_ocean[idx] = 1 if sea else 0
+			cell_water[idx] = 1 if wl > -100.0 and h < wl - 0.05 and not sea else 0
 
 
 # ---------------------------------------------------------------- sampling
@@ -391,6 +502,24 @@ func is_water(x: float, z: float) -> bool:
 	var ci := clampi(int(floor(x + HALF)), 0, N - 1)
 	var cj := clampi(int(floor(z + HALF)), 0, N - 1)
 	return cell_water[cj * N + ci] == 1
+
+
+func coast_at(x: float, z: float) -> float:
+	return coast[vertex_index(x, z)]
+
+
+func built_at(x: float, z: float) -> int:
+	var ci := clampi(int(floor(x + HALF)), 0, N - 1)
+	var cj := clampi(int(floor(z + HALF)), 0, N - 1)
+	return cell_built[cj * N + ci]
+
+
+func is_ocean(x: float, z: float) -> bool:
+	if not in_bounds(x, z):
+		return true
+	var ci := clampi(int(floor(x + HALF)), 0, N - 1)
+	var cj := clampi(int(floor(z + HALF)), 0, N - 1)
+	return cell_ocean[cj * N + ci] == 1
 
 
 func vertex_index(x: float, z: float) -> int:

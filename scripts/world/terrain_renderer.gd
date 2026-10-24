@@ -1,9 +1,13 @@
 class_name TerrainRenderer
 extends Node3D
-## Builds the visible terrain chunks, collision, water surfaces and the
-## distant backdrop ring from a TerrainData.
+## Builds the visible terrain chunks, collision, water surfaces, the sea and
+## the distant islands on the horizon from a TerrainData.
 
 const CHUNK_CELLS := 64
+const FIELD_COLORS := {
+	"wheat": Color(0.78, 0.68, 0.36), "furrow": Color(0.47, 0.35, 0.22),
+	"greens": Color(0.36, 0.55, 0.22), "pasture": Color(0.45, 0.62, 0.27),
+}
 
 var terrain: TerrainData
 var terrain_material: ShaderMaterial
@@ -24,9 +28,9 @@ func build(t: TerrainData) -> void:
 	terrain_material = ShaderLib.material("terrain")
 	_compute_colors()
 	_build_chunks()
-	_build_skirt()
 	_build_collision()
 	_build_water()
+	_build_sea()
 	_build_backdrop()
 
 
@@ -68,6 +72,12 @@ func _compute_colors() -> void:
 				c = c.lerp(rc, rockiness * hl)
 			elif slope > 0.7:
 				c = c.lerp(rock_tan, smoothstep(0.7, 1.1, slope) * 0.7)
+			# Beaches around the island; rocky shores under the mountains.
+			var cd := terrain.coast[idx]
+			if cd < 16.0:
+				var shore := 1.0 - smoothstep(5.0 + n * 4.0, 15.0, cd)
+				var shore_c := sand.lerp(rock_gray, smoothstep(0.3, 0.8, hl) * 0.8)
+				c = c.lerp(shore_c, shore * (1.0 - smoothstep(4.0, 9.0, h)))
 			# Shores and river banks.
 			var wl := terrain.water_level[idx]
 			if wl > -100.0:
@@ -78,6 +88,10 @@ func _compute_colors() -> void:
 			var rd := terrain.river_dist[idx]
 			if rd < 9.0 and region != TerrainData.REGION_HIGHLANDS:
 				c = c.lerp(Color(0.48, 0.47, 0.40), (1.0 - smoothstep(4.0, 9.0, rd)) * 0.35)
+			# Farm fields and village yards.
+			var field := terrain.settlements.field_at(Vector2(x, z), 1.0)
+			if not field.is_empty():
+				c = FIELD_COLORS.get(field["crop"], c)
 			# Footpaths.
 			var pd := terrain.path_dist[idx]
 			if pd < 2.2:
@@ -159,45 +173,6 @@ func _build_chunks() -> void:
 			add_child(mi)
 
 
-## Downward skirt around the edge hides any gap to the backdrop ring.
-func _build_skirt() -> void:
-	var mb := MeshBuilder.new()
-	var V := TerrainData.V
-	var H := TerrainData.HALF
-	var edges := [
-		[Vector2i(0, 0), Vector2i(1, 0), Vector3(0, 0, -1)],
-		[Vector2i(V - 1, 0), Vector2i(0, 1), Vector3(1, 0, 0)],
-		[Vector2i(V - 1, V - 1), Vector2i(-1, 0), Vector3(0, 0, 1)],
-		[Vector2i(0, V - 1), Vector2i(0, -1), Vector3(-1, 0, 0)],
-	]
-	for e in edges:
-		var start: Vector2i = e[0]
-		var step: Vector2i = e[1]
-		var out: Vector3 = e[2]
-		for k in V - 1:
-			var a := start + step * k
-			var b := a + step
-			var pa := Vector3(-H + a.x, terrain.heights[a.y * V + a.x], -H + a.y)
-			var pb := Vector3(-H + b.x, terrain.heights[b.y * V + b.x], -H + b.y)
-			var ca := colors[a.y * V + a.x].darkened(0.25)
-			var cb := colors[b.y * V + b.x].darkened(0.25)
-			var i0 := mb.add_vertex(pa, out, ca)
-			var i1 := mb.add_vertex(pb, out, cb)
-			var i2 := mb.add_vertex(pa - Vector3(0, 30, 0), out, ca)
-			var i3 := mb.add_vertex(pb - Vector3(0, 30, 0), out, cb)
-			mb.add_tri_idx(i0, i1, i2)
-			mb.add_tri_idx(i1, i3, i2)
-	var mi := MeshInstance3D.new()
-	mi.name = "Skirt"
-	mi.mesh = mb.commit()
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.roughness = 1.0
-	mi.material_override = mat
-	add_child(mi)
-
-
 func _build_collision() -> void:
 	var body := StaticBody3D.new()
 	body.name = "TerrainCollision"
@@ -220,118 +195,151 @@ func _build_collision() -> void:
 
 
 # -------------------------------------------------------------------- water
+## One mesh for every lake, tarn and river, following the water level of
+## each vertex exactly, so water can never float above dry land. Vertex
+## colours carry the river flow for the shader.
 func _build_water() -> void:
 	water_material = ShaderLib.material("water")
-	# Lake: a finely subdivided plane over the basin bounding box.
+	var V := TerrainData.V
+	var N := TerrainData.N
+	var H := TerrainData.HALF
+	var wl := terrain.water_level
+	var level := PackedFloat32Array()
+	level.resize(V * V)
+	for j in V:
+		for i in V:
+			var idx := j * V + i
+			var w := wl[idx]
+			if w < -100.0:
+				# Extend the surface one vertex under the banks (where the
+				# higher ground hides it) at the lowest neighbouring level, so
+				# the edge dips under the bank instead of standing up as a wall.
+				var lowest := 1.0e9
+				for oj in range(-1, 2):
+					for oi in range(-1, 2):
+						var ni := clampi(i + oi, 0, V - 1)
+						var nj := clampi(j + oj, 0, V - 1)
+						var nw := wl[nj * V + ni]
+						if nw > -100.0:
+							lowest = minf(lowest, nw)
+				if lowest < 1.0e8:
+					w = minf(lowest, terrain.heights[idx] - 0.05)
+			level[idx] = w
 	var mb := MeshBuilder.new()
-	var x0 := 60.0
-	var x1 := 215.0
-	var z0 := -95.0
-	var z1 := 85.0
-	var step := 2.0
-	var nx := int((x1 - x0) / step)
-	var nz := int((z1 - z0) / step)
-	for j in nz + 1:
-		for i in nx + 1:
-			mb.add_vertex(Vector3(x0 + i * step, TerrainData.LAKE_LEVEL, z0 + j * step), Vector3.UP, Color.WHITE)
-	for j in nz:
-		for i in nx:
-			var a := j * (nx + 1) + i
-			var b := a + 1
-			var c := a + nx + 1
-			var d := c + 1
-			mb.add_tri_idx(a, b, c)
-			mb.add_tri_idx(b, d, c)
-	var lake := MeshInstance3D.new()
-	lake.name = "Lake"
-	lake.mesh = mb.commit()
-	lake.material_override = water_material
-	lake.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(lake)
-	# Rivers: strips along the carved channels.
-	for r in terrain.rivers:
-		var pts: PackedVector3Array = r["points"]
-		var widths: PackedFloat32Array = r["widths"]
-		var rb := MeshBuilder.new()
-		for k in pts.size():
-			var p := pts[k]
-			var a := pts[maxi(k - 1, 0)]
-			var b := pts[mini(k + 1, pts.size() - 1)]
-			var t := Vector2(b.x - a.x, b.z - a.z).normalized()
-			var nrm := Vector3(-t.y, 0, t.x)
-			var hw := widths[k] * 1.35
-			rb.add_vertex(p + nrm * hw + Vector3(0, 0.02, 0), Vector3.UP, Color.WHITE, Vector2(0, k * 0.1))
-			rb.add_vertex(p - nrm * hw + Vector3(0, 0.02, 0), Vector3.UP, Color.WHITE, Vector2(1, k * 0.1))
-		for k in pts.size() - 1:
-			var i0 := k * 2
-			rb.add_tri_idx(i0, i0 + 1, i0 + 2)
-			rb.add_tri_idx(i0 + 1, i0 + 3, i0 + 2)
-		var river := MeshInstance3D.new()
-		river.name = "River"
-		river.mesh = rb.commit()
-		var rm := ShaderLib.material("water")
-		var first: Vector3 = pts[0]
-		var last: Vector3 = pts[pts.size() - 1]
-		rm.set_shader_parameter("flow_speed", 0.6)
-		rm.set_shader_parameter("flow_dir", Vector2(last.x - first.x, last.z - first.z).normalized())
-		rm.render_priority = 1
-		river.material_override = rm
-		river.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(river)
+	var vmap := PackedInt32Array()
+	vmap.resize(V * V)
+	vmap.fill(-1)
+	for cj in N:
+		for ci in N:
+			if terrain.cell_ocean[cj * N + ci] == 1:
+				continue
+			var a := cj * V + ci
+			var corners := [a, a + 1, a + V, a + V + 1]
+			var wet := false
+			var lo := 1.0e9
+			for k in corners:
+				if wl[k] > -100.0 and wl[k] > terrain.heights[k] - 0.6:
+					wet = true
+				lo = minf(lo, level[k])
+			if not wet or lo < -100.0:
+				continue
+			var ids := []
+			for k in corners:
+				if vmap[k] < 0:
+					var vi: int = k % V
+					var vj: int = k / V
+					var f := terrain.flow[k]
+					vmap[k] = mb.add_vertex(Vector3(-H + vi, level[k] + 0.02, -H + vj), Vector3.UP,
+						Color(f.x * 0.25 + 0.5, f.y * 0.25 + 0.5, 0.0, 1.0))
+				ids.append(vmap[k])
+			mb.add_tri_idx(ids[0], ids[1], ids[2])
+			mb.add_tri_idx(ids[1], ids[3], ids[2])
+	var mi := MeshInstance3D.new()
+	mi.name = "InlandWater"
+	mi.mesh = mb.commit()
+	mi.material_override = water_material
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+
+
+## The sea: a wide disc of rings around the island out to the horizon.
+func _build_sea() -> void:
+	var mb := MeshBuilder.new()
+	var radii: Array[float] = []
+	var r := 0.0
+	while r < 3600.0:
+		radii.append(r)
+		r += clampf(r * 0.08, 6.0, 160.0)
+	var seg := 160
+	var still := Color(0.5, 0.5, 0.0, 1.0)
+	for ri in radii.size():
+		for k in seg:
+			var a := TAU * k / seg
+			mb.add_vertex(Vector3(cos(a) * radii[ri], TerrainData.SEA_LEVEL, sin(a) * radii[ri]), Vector3.UP, still)
+	for ri in radii.size() - 1:
+		for k in seg:
+			var a0 := ri * seg + k
+			var a1 := ri * seg + (k + 1) % seg
+			var b0 := a0 + seg
+			var b1 := a1 + seg
+			mb.add_tri_idx(a0, b0, a1)
+			mb.add_tri_idx(a1, b0, b1)
+	var mi := MeshInstance3D.new()
+	mi.name = "Sea"
+	mi.mesh = mb.commit()
+	var mat := ShaderLib.material("water")
+	mat.set_shader_parameter("open_sea", true)
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.extra_cull_margin = 100.0
+	add_child(mi)
 
 
 # ----------------------------------------------------------------- backdrop
+## A few distant islands on the horizon give the sea some depth.
 func _build_backdrop() -> void:
 	var noise := FastNoiseLite.new()
 	noise.seed = terrain.seed_value + 909
 	noise.fractal_type = FastNoiseLite.FRACTAL_RIDGED
-	noise.frequency = 0.0022
+	noise.frequency = 0.004
 	noise.fractal_octaves = 4
-	var spacing := 32.0
-	var extent := 1440.0
-	var n := int(extent * 2.0 / spacing)
-	var H := TerrainData.HALF
-	var hts := PackedFloat32Array()
-	hts.resize((n + 1) * (n + 1))
-	for j in n + 1:
-		for i in n + 1:
-			var x := -extent + i * spacing
-			var z := -extent + j * spacing
-			var e := maxf(absf(x), absf(z))
-			var edge_h := terrain.sample_height(clampf(x, -H, H), clampf(z, -H, H))
-			if e <= H + 0.01:
-				hts[j * (n + 1) + i] = edge_h - 3.0
-				continue
-			var d := e - H
-			var ridge := noise.get_noise_2d(x, z) * 0.5 + 0.5
-			var mount := pow(ridge, 1.5) * 160.0 * smoothstep(30.0, 450.0, d)
-			# Higher ranges behind the highlands in the north.
-			mount *= 1.0 + smoothstep(0.0, -900.0, z) * 0.6
-			hts[j * (n + 1) + i] = edge_h - 3.0 + d * 0.12 + mount + smoothstep(0.0, 120.0, d) * 18.0
+	var islands := [
+		[Vector2(-300, -1250), 380.0, 190.0], [Vector2(700, -950), 260.0, 110.0], [Vector2(-1150, -500), 300.0, 140.0],
+		[Vector2(1250, 250), 220.0, 70.0], [Vector2(-1000, 800), 200.0, 55.0], [Vector2(450, 1200), 260.0, 80.0],
+	]
+	var spacing := 24.0
 	var mb := MeshBuilder.new()
-	for j in n + 1:
-		for i in n + 1:
-			var x := -extent + i * spacing
-			var z := -extent + j * spacing
-			var h := hts[j * (n + 1) + i]
-			var hx := hts[j * (n + 1) + mini(i + 1, n)] - hts[j * (n + 1) + maxi(i - 1, 0)]
-			var hz := hts[mini(j + 1, n) * (n + 1) + i] - hts[maxi(j - 1, 0) * (n + 1) + i]
-			var nrm := Vector3(-hx / (2.0 * spacing), 1.0, -hz / (2.0 * spacing)).normalized()
-			mb.add_vertex(Vector3(x, h, z), nrm, Color.WHITE)
-	for j in n:
-		for i in n:
-			var cx := -extent + (i + 0.5) * spacing
-			var cz := -extent + (j + 0.5) * spacing
-			if absf(cx) < H and absf(cz) < H:
-				continue
-			var a := j * (n + 1) + i
-			var b := a + 1
-			var c := a + n + 1
-			var d := c + 1
-			mb.add_tri_idx(a, b, c)
-			mb.add_tri_idx(b, d, c)
+	for isl in islands:
+		var c: Vector2 = isl[0]
+		var rad: float = isl[1]
+		var peak: float = isl[2]
+		var n := int(rad * 2.4 / spacing)
+		var base := mb.vertex_count()
+		var hts := PackedFloat32Array()
+		hts.resize((n + 1) * (n + 1))
+		for j in n + 1:
+			for i in n + 1:
+				var p := c + Vector2(-rad * 1.2 + i * spacing, -rad * 1.2 + j * spacing)
+				var d := p.distance_to(c) / rad + noise.get_noise_2d(p.x * 0.5, p.y * 0.5) * 0.25
+				var ridge := noise.get_noise_2d(p.x, p.y) * 0.5 + 0.5
+				var shape := 1.0 - smoothstep(0.0, 1.0, d)
+				hts[j * (n + 1) + i] = shape * (peak * (0.45 + 0.55 * ridge)) - 10.0 * (1.0 - shape)
+		for j in n + 1:
+			for i in n + 1:
+				var h := hts[j * (n + 1) + i]
+				var hx := hts[j * (n + 1) + mini(i + 1, n)] - hts[j * (n + 1) + maxi(i - 1, 0)]
+				var hz := hts[mini(j + 1, n) * (n + 1) + i] - hts[maxi(j - 1, 0) * (n + 1) + i]
+				var nrm := Vector3(-hx / (2.0 * spacing), 1.0, -hz / (2.0 * spacing)).normalized()
+				mb.add_vertex(Vector3(c.x - rad * 1.2 + i * spacing, h, c.y - rad * 1.2 + j * spacing), nrm, Color.WHITE)
+		for j in n:
+			for i in n:
+				var a0 := j * (n + 1) + i
+				if maxf(maxf(hts[a0], hts[a0 + 1]), maxf(hts[a0 + n + 1], hts[a0 + n + 2])) < -1.0:
+					continue
+				mb.add_tri_idx(base + a0, base + a0 + 1, base + a0 + n + 1)
+				mb.add_tri_idx(base + a0 + 1, base + a0 + n + 2, base + a0 + n + 1)
 	var mi := MeshInstance3D.new()
-	mi.name = "Backdrop"
+	mi.name = "DistantIslands"
 	mi.mesh = mb.commit()
 	mi.material_override = ShaderLib.material("backdrop")
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

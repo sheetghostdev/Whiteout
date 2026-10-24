@@ -11,7 +11,7 @@ varying vec3 wpos;
 
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	float c = wo_cov(wpos.xz);
+	float c = wo_cov_smooth(wpos.xz);
 	// A thin snow layer lifts the surface slightly once ground is well covered.
 	VERTEX.y += smoothstep(0.35, 1.0, c) * 0.12;
 }
@@ -35,13 +35,13 @@ void fragment() {
 	float c = wo_cov_warped(xz);
 	float m = wo_snow_mask(c, xz);
 	vec3 snow = wo_snow_color(wn, xz);
-	// Soft drift ripples tilt the snow normal a little.
-	float rx = wo_noise(xz * 0.6 + vec2(0.3, 0.0)) - wo_noise(xz * 0.6 - vec2(0.3, 0.0));
-	float rz = wo_noise(xz * 0.6 + vec2(0.0, 0.3)) - wo_noise(xz * 0.6 - vec2(0.0, 0.3));
-	vec3 sn = normalize(wn + vec3(rx, 0.0, rz) * 0.35);
+	// Soft, irregular drift undulations tilt the snow normal very slightly.
+	float rx = wo_rfbm(xz * 0.12 + vec2(0.6, 0.0)) - wo_rfbm(xz * 0.12 - vec2(0.6, 0.0));
+	float rz = wo_rfbm(xz * 0.12 + vec2(0.0, 0.6)) - wo_rfbm(xz * 0.12 - vec2(0.0, 0.6));
+	vec3 sn = normalize(wn + vec3(rx, 0.0, rz) * 0.18);
 	snow *= 0.97 + 0.05 * sn.y;
-	// Cool rim along the snow edge reads clearly from far away.
-	float edge = m * (1.0 - m) * 4.0;
+	// Faint cool tint where snow is thin.
+	float edge = m * (1.0 - m) * 2.0;
 
 	vec3 col = mix(summer, snow, m);
 	col = mix(col, wo_lin(vec3(0.82, 0.90, 1.0)), edge * 0.25);
@@ -51,7 +51,7 @@ void fragment() {
 	NORMAL = normalize(mix(NORMAL, (VIEW_MATRIX * vec4(sn, 0.0)).xyz, m));
 
 	// ---- sparkles: tiny view-dependent glints on fully covered snow
-	vec2 cell = floor(xz * 5.0);
+	vec2 cell = floor(mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8)) * xz * 5.0);
 	float h = wo_hash(cell);
 	vec3 vw = normalize((INV_VIEW_MATRIX * vec4(VIEW, 0.0)).xyz);
 	float glint = pow(max(0.0, sin(h * 91.0 + dot(vw, vec3(9.0, 5.0, 7.0)) * 2.4)), 48.0) * step(0.93, h);

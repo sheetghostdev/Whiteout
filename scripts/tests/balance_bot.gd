@@ -34,6 +34,7 @@ var _think := 0.0
 var _shop := 0.0
 var _check := 0.0
 var _goal_timer := 0.0
+var _heading := Vector2.ZERO
 
 
 func setup(host: Node, p_terrain: TerrainData, p_strategy: String, seed_value: int) -> void:
@@ -82,7 +83,7 @@ func summary() -> Dictionary:
 		"lifetime_frost": prog.lifetime_frost, "skills": skill_times, "milestones": milestone_times,
 		"first_purchase": first_purchase, "longest_gap": longest_gap, "purchases": purchases,
 		"choices_avg": choice_sum / maxf(choice_samples, 1), "choices_max": choice_max,
-		"spent_fraction": spent_fraction(), "radius": prog.stat("radius"), "sources": w.area_by_source.duplicate()}
+		"spent_fraction": spent_fraction(), "radius": prog.stat("radius"), "sources": w.area_by_source.duplicate(), "land": float(cov.total_cells)}
 
 
 ## Share of the whole web's price that was bought.
@@ -139,11 +140,14 @@ func _checks() -> void:
 
 
 # ----------------------------------------------------------------- flying
+## Flies like a tidy player mowing a lawn: head for the nearest green
+## ground and keep moving through it, turning back across the patch for the
+## next pass. The cloud never needs to stop, and stopping earns nothing.
 func _steer() -> void:
 	var pos := cloud.pos
 	_goal_timer -= 0.1
 	if _goal_timer <= 0.0 or goal == Vector2.INF or cov.get_coverage(goal.x, goal.y) >= 1.0:
-		_goal_timer = 1.5
+		_goal_timer = 0.8
 		goal = cov.find_nearest_unfrozen_area(pos, 1.0e9, 2)
 	if goal == Vector2.INF:
 		cloud.move_input = Vector2.ZERO
@@ -151,12 +155,12 @@ func _steer() -> void:
 	var to := goal - pos
 	var d := to.length()
 	var r := cloud.radius
-	# Paint slowly over green ground, cruise quickly between patches.
-	var under := cov.sample_coverage(pos.x, pos.y)
-	var paint := 0.35 if under < 0.85 else 1.0
-	var mag := clampf(d / maxf(r * 0.6, 1.0), 0.0, 1.0) * (paint if d < r * 1.5 else 1.0)
-	cloud.move_input = to.normalized() * mag if d > 0.3 else Vector2.ZERO
-	cloud.dashing = d > r * 3.0 or (prog.has("tailwind") and mag > 0.6)
+	if d > r * 0.6 or _heading == Vector2.ZERO:
+		_heading = to.normalized()
+	# Within the patch, keep the current heading: the cloud overshoots,
+	# then the next goal turns it back for a parallel pass.
+	cloud.move_input = _heading
+	cloud.dashing = d > r * 3.0 or prog.has("tailwind")
 
 
 func _green_around(c: Vector2, rr: float) -> float:

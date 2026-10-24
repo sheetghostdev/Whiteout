@@ -59,25 +59,72 @@ float wo_fbm(vec2 p) {
 	return v / 0.9375;
 }
 
-// Coverage with a small organic domain warp so the 1 m cells never read as squares.
+// Smooth noise sampled on a rotated, offset lattice so no pattern lines up
+// with the 1 m coverage grid or the world axes.
+float wo_rnoise(vec2 p) {
+	return wo_noise(mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8)) * p + vec2(3.7, 1.3));
+}
+
+float wo_rfbm(vec2 p) {
+	float v = 0.0;
+	float a = 0.5;
+	mat2 r = mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8));
+	for (int k = 0; k < 4; k++) {
+		v += a * wo_noise(p);
+		p = r * p * 2.03 + vec2(17.1, 9.2);
+		a *= 0.5;
+	}
+	return v / 0.9375;
+}
+
+// Cubic B-spline sampling of the coverage grid (four bilinear taps): the
+// 1 m cells blend into smooth, round shapes instead of squares and lines.
+float wo_cov_smooth(vec2 xz) {
+	vec2 tc = xz + WO_HALF - 0.5;
+	vec2 f = fract(tc);
+	vec2 i = floor(tc);
+	vec2 f2 = f * f;
+	vec2 f3 = f2 * f;
+	vec2 w0 = (1.0 - f) * (1.0 - f) * (1.0 - f) / 6.0;
+	vec2 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+	vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0;
+	vec2 w3 = f3 / 6.0;
+	vec2 g0 = w0 + w1;
+	vec2 g1 = w2 + w3;
+	vec2 h0 = (w1 / g0) - 1.0 + i + 0.5;
+	vec2 h1 = (w3 / g1) + 1.0 + i + 0.5;
+	float a = textureLod(wo_coverage, vec2(h0.x, h0.y) / 512.0, 0.0).r;
+	float b = textureLod(wo_coverage, vec2(h1.x, h0.y) / 512.0, 0.0).r;
+	float c = textureLod(wo_coverage, vec2(h0.x, h1.y) / 512.0, 0.0).r;
+	float d = textureLod(wo_coverage, vec2(h1.x, h1.y) / 512.0, 0.0).r;
+	return g0.y * (g0.x * a + g1.x * b) + g1.y * (g0.x * c + g1.x * d);
+}
+
+// Coverage with an organic wobble along snow edges: a broad meander plus a
+// finer ripple, so even a perfectly straight pass never leaves a ruled line.
 float wo_cov_warped(vec2 xz) {
-	vec2 w = vec2(wo_noise(xz * 0.7), wo_noise(xz * 0.7 + 31.7)) - 0.5;
-	return wo_cov(xz + w * 0.9);
+	vec2 broad = vec2(wo_rfbm(xz * 0.05), wo_rfbm(xz * 0.05 + 47.3)) - 0.5;
+	vec2 mid = vec2(wo_rfbm(xz * 0.16 + 9.1), wo_rfbm(xz * 0.16 + 21.7)) - 0.5;
+	vec2 fine = vec2(wo_rnoise(xz * 0.5), wo_rnoise(xz * 0.5 + 31.7)) - 0.5;
+	return wo_cov_smooth(xz + broad * 7.0 + mid * 2.6 + fine * 1.0);
 }
 
 // Maps coverage 0..1 to a visible snow mask with natural patchy accumulation.
 // Coverage >= 0.97 is always fully white, so "looks frozen" == "is frozen".
+// Partial coverage reads as an even dusting that thickens smoothly, with
+// only a soft hint of variation, so falling snow never looks patchy.
 float wo_snow_mask(float c, vec2 xz) {
-	float s = clamp((c - 0.02) / 0.95, 0.0, 1.0);
-	float n = wo_fbm(xz * 0.42) * 0.72 + wo_noise(xz * 2.1) * 0.28;
-	return smoothstep(n * 0.88, n * 0.88 + 0.12, s);
+	float s = clamp((c - 0.01) / 0.96, 0.0, 1.0);
+	float n = wo_rfbm(xz * 0.18) - 0.5;
+	float m = s + n * 0.22 * s * (1.0 - s) * 4.0;
+	return clamp(sqrt(max(m, 0.0)) * 0.55 + m * 0.45, 0.0, 1.0);
 }
 
 vec3 wo_snow_color(vec3 world_normal, vec2 xz) {
 	float up = clamp(world_normal.y, 0.0, 1.0);
 	vec3 shade = mix(wo_lin(vec3(0.80, 0.87, 0.97)), wo_lin(vec3(0.97, 0.98, 1.0)), smoothstep(0.55, 0.98, up));
-	float drift = wo_fbm(xz * 0.09);
-	shade *= 0.955 + 0.06 * drift;
+	float drift = wo_rfbm(xz * 0.045);
+	shade *= 0.97 + 0.04 * drift;
 	return shade;
 }
 

@@ -27,6 +27,10 @@ func _ready() -> void:
 			await _fx()
 		"complete":
 			await _complete()
+		"snowcheck":
+			await _snowcheck()
+		"island":
+			await _island()
 	get_tree().quit()
 
 
@@ -266,3 +270,60 @@ func _sleep(s: float) -> void:
 	while t < s:
 		await get_tree().process_frame
 		t += get_process_delta_time()
+
+
+func _snowcheck() -> void:
+	Game.start_new_game()
+	await _frames(10)
+	var cov := Game.world.coverage
+	cov.apply_disc(0, 60, 40.0, 1.0)
+	cov.apply_disc(0, 60, 40.0, 1.0)
+	cov.update_texture()
+	_cloud().pos = Vector2(0, 75)
+	_look(0, -35, 0.7)
+	await _sleep(2.0)
+	await _shot("50_done_close")
+	_look(60, -60, 1.0)
+	await _sleep(1.5)
+	await _shot("51_done_top")
+	# A natural trail flown by the cloud.
+	Game.prog.add_frost(500)
+	for id in ["billow", "flurry", "breeze"]:
+		for i in 5:
+			Game.prog.purchase(id)
+	_cloud().pos = Vector2(-60, 120)
+	_look(90, -40, 1.0)
+	await _fly(Vector2(1, 0), 6.0)
+	await _sleep(1.0)
+	await _shot("52_trail")
+
+
+func _view(x: float, z: float, yaw: float, pitch: float, zoom: float, shot: String, wait: float = 1.5) -> void:
+	_cloud().pos = Vector2(x, z)
+	_cloud().vel = Vector2.ZERO
+	_look(yaw, pitch, zoom)
+	await _sleep(wait)
+	await _shot(shot)
+
+
+func _island() -> void:
+	Game.start_new_game()
+	await _frames(10)
+	await _view(60, 112, 200, -28, 1.3, "60_village")
+	await _view(-100, 72, 160, -30, 1.4, "61_farm")
+	await _view(76, 40, 230, -25, 1.2, "62_hamlet")
+	await _view(10, 170, 0, -18, 2.4, "63_south_coast")
+	await _view(-30, -120, 180, -22, 2.4, "64_north_mountains")
+	await _view(-20, -140, 220, -30, 1.6, "65_tarn")
+	await _view(150, 150, 160, -28, 2.0, "66_river_mouth")
+	# Snow on the village: people bundle up and shiver.
+	var cov := Game.world.coverage
+	for k in 3:
+		cov.apply_disc(70, 145, 45.0, 0.35)
+	cov.update_texture()
+	await _view(62, 128, 200, -20, 0.5, "67_village_snowing", 3.0)
+	for k in 3:
+		cov.apply_disc(70, 145, 45.0, 1.0)
+	cov.update_texture()
+	await _view(60, 112, 200, -28, 1.3, "68_village_frozen", 2.0)
+	await _view(60, 136, 230, -15, 0.45, "69_shivering", 2.5)

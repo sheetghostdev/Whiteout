@@ -34,8 +34,14 @@ func run(t, _full: bool) -> void:
 	var c: PlayerCloud = Game.weather.cloud
 	t.check(c != null and c.alive, "you start as a snow cloud")
 	t.check(p.camera.current, "third-person camera is active")
+	p.autopilot = true
+	for i in 60:
+		Game.weather.advance(0.05)
+	t.check(Game.prog.frost == 0.0, "a resting cloud earns nothing")
+	c.move_input = Vector2(1, 0)
 	for i in 120:
 		Game.weather.advance(0.05)
+	c.move_input = Vector2.ZERO
 	await _frames(t, 2)
 	t.check(Game.prog.frost > 0.0, "snowfall earns Frost in the running game")
 	Game.prog.add_frost(100.0)
@@ -46,6 +52,7 @@ func run(t, _full: bool) -> void:
 	c.move_input = Vector2.ZERO
 	await _frames(t, 2)
 	t.check(p.global_position.distance_to(Vector3(c.pos.x, p.global_position.y, c.pos.y)) < 1.0, "the rig follows the cloud")
+	p.autopilot = false
 	Game.main.open_overlay("shop")
 	await _frames(t, 2)
 	t.check(Game.main.web.visible and not p.input_enabled, "upgrade web opens and stops steering")

@@ -69,6 +69,13 @@ func build_relief(terrain: TerrainData, colors: PackedColorArray) -> void:
 			if terrain.cell_water[j * n + i] == 1:
 				c = Color(0.30, 0.62, 0.78)
 				shade = 1.0
+			elif terrain.cell_ocean[j * n + i] == 1:
+				var depth := clampf(-terrain.heights[idx] / 12.0, 0.0, 1.0)
+				c = Color(0.36, 0.68, 0.80).lerp(Color(0.16, 0.38, 0.62), depth)
+				shade = 1.0
+			elif terrain.cell_built[j * n + i] == 1 and terrain.settlements.building_at(Vector2(i - 256.0 + 0.5, j - 256.0 + 0.5), 0.0):
+				c = Color(0.55, 0.30, 0.24)
+				shade = 1.0
 			img.set_pixel(i, j, Color(c.r * shade, c.g * shade, c.b * shade, clampf(shade - 0.2, 0.0, 1.0)))
 	_relief = ImageTexture.create_from_image(img)
 	_map.texture = _relief

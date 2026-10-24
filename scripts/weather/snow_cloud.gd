@@ -11,6 +11,8 @@ var slot := 0             # cloudlet index around the player
 var seek := Vector2.INF
 var seek_timer := 0.0
 var new_cov := 0.0
+var orbit := 0.0
+var _snow_from := Vector2.INF
 
 var _cloud: MeshInstance3D
 var _snow: GPUParticles3D
@@ -52,8 +54,17 @@ func sim_step(dt: float) -> void:
 	age += dt
 	if mode == "cloudlet":
 		_cloudlet_motion(dt)
-	var core := 0.4 if mode == "wake" else manager.prog.stat("core")
-	var gain := cov.apply_disc(pos.x, pos.y, radius, rate * dt, 1, 0, core)
+	var gain := 0.0
+	if mode == "wake":
+		# Wake flurries hang where you passed and keep snowing for a while.
+		gain = cov.apply_disc(pos.x, pos.y, radius, rate * dt, 1, 0, 0.4)
+	else:
+		# Cloudlets lay snow along their path, like you do.
+		if _snow_from == Vector2.INF:
+			_snow_from = pos
+		if _snow_from.distance_to(pos) > 0.05:
+			gain = cov.apply_sweep(_snow_from.x, _snow_from.y, pos.x, pos.y, radius, rate, manager.prog.stat("core"))
+			_snow_from = pos
 	new_cov += cov.last_cov_delta
 	manager.add_gain(gain, cov.last_cov_delta, self)
 	if age >= life:
@@ -67,12 +78,15 @@ func _cloudlet_motion(dt: float) -> void:
 		return
 	var prog := manager.prog
 	radius = host.base_radius() * prog.stat("comp_size")
-	rate = host.rate * 0.5
+	rate = host.rate * 0.4
 	var count := maxi(int(prog.stat("companions")), 1)
-	var ang := host.age * 0.35 + TAU * slot / count
-	var home := host.pos + Vector2.from_angle(ang) * (host.radius + radius * 1.2)
+	var ring := host.radius + radius * 1.2
+	# The orbit turns with your travel, so resting clouds rest too.
+	orbit += host.last_moved / maxf(ring, 1.0) * 0.5
+	var ang := orbit + TAU * slot / count
+	var home := host.pos + Vector2.from_angle(ang) * ring
 	var target := home
-	if prog.has("wanderers"):
+	if prog.has("wanderers") and host.is_active():
 		var leash := prog.stat("comp_leash") + host.radius
 		seek_timer -= dt
 		var stale := seek == Vector2.INF or cov_at(seek) >= 0.98 or seek.distance_to(host.pos) > leash
