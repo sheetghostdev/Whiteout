@@ -35,6 +35,12 @@ func _ready() -> void:
 			await _round3()
 		"round4":
 			await _round4()
+		"edge":
+			await _edge()
+		"edgewake":
+			for id in ["billow", "flurry", "snow_wake", "long_wake"]:
+				Game.prog.levels[id] = 2 if id != "snow_wake" else 1
+			await _edge()
 	get_tree().quit()
 
 
@@ -426,3 +432,32 @@ func _round4() -> void:
 			beach = q - Vector2(0, 12)
 			break
 	await _view(beach.x, beach.y, 180, -26, 1.1, "89_beach_frozen", 2.0)
+
+
+## Close looks at a freshly flown snow edge, from above and from low down.
+func _edge() -> void:
+	var keep: Dictionary = Game.prog.levels.duplicate()
+	Game.start_new_game()
+	await _frames(10)
+	for id in keep:
+		Game.prog.levels[id] = keep[id]
+	_cloud().pos = Vector2(-40, 60)
+	await _sleep(0.5)
+	await _fly(Vector2(0.8, 0.6).normalized(), 4.0)
+	await _fly(Vector2(-0.6, 0.8).normalized(), 2.0)
+	await _sleep(1.0)
+	_look(30, -70, 0.6)
+	await _sleep(1.0)
+	await _shot("90_edge_top")
+	_look(120, -30, 0.5)
+	await _sleep(1.0)
+	await _shot("91_edge_low")
+	# While flying, seen from behind and above like the player sees it.
+	Game.player.autopilot = true
+	_look(200, -55, 1.0)
+	_cloud().move_input = Vector2(-0.8, 0.6).normalized()
+	await _sleep(2.5)
+	await _shot("92_edge_flying")
+	await _sleep(0.7)
+	await _shot("93_edge_flying2")
+	_cloud().move_input = Vector2.ZERO

@@ -10,10 +10,11 @@ uniform float sparkle_strength = 0.9;
 varying vec3 wpos;
 
 void vertex() {
+	// VERTEX is left untouched on purpose: Forward+ draws the terrain in a
+	// depth pre-pass and again in the colour pass, and any position computed
+	// from textures here can differ by a hair between the two on real GPUs,
+	// letting the sky show through as pale slivers along snow edges.
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	float c = wo_cov_smooth(wpos.xz);
-	// A thin snow layer lifts the surface slightly once ground is well covered.
-	VERTEX.y += smoothstep(0.35, 1.0, c) * 0.12;
 }
 
 void fragment() {
