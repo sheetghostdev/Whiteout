@@ -28,14 +28,16 @@ void vertex() {
 
 float ice_cracks(vec2 p) {
 	// Cheap cellular pattern: distance to nearest jittered point.
-	vec2 i = floor(p);
-	vec2 f = fract(p);
+	vec2 fl = floor(p);
+	ivec2 i = ivec2(fl);
+	vec2 f = p - fl;
 	float d1 = 8.0;
 	float d2 = 8.0;
 	for (int y = -1; y <= 1; y++) {
 		for (int x = -1; x <= 1; x++) {
 			vec2 g = vec2(float(x), float(y));
-			vec2 o = vec2(wo_hash(i + g), wo_hash(i + g + 17.3));
+			ivec2 c = i + ivec2(x, y);
+			vec2 o = vec2(wo_ihash(c), wo_ihash(c + ivec2(1031, 7919)));
 			float d = length(g + o - f);
 			if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }
 		}

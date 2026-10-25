@@ -31,20 +31,36 @@ float wo_cov(vec2 xz) {
 	return textureLod(wo_coverage, (xz + WO_HALF) / 512.0, 0.0).r;
 }
 
+// Integer lattice hash (pcg2d). Pure integer arithmetic gives bit-identical
+// results on every GPU. A float hash (fract of large products) is chaotic, so
+// fused multiply-adds on real GPUs could give the same lattice corner two
+// different values from neighbouring cells, and the noise built on it then
+// jumped along straight lattice lines: hard facets and wedges in the snow.
+float wo_ihash(ivec2 c) {
+	uvec2 v = uvec2(c) * 1664525u + 1013904223u;
+	v.x += v.y * 1664525u;
+	v.y += v.x * 1664525u;
+	v = v ^ (v >> 16u);
+	v.x += v.y * 1664525u;
+	v.y += v.x * 1664525u;
+	v = v ^ (v >> 16u);
+	return float((v.x ^ v.y) >> 8u) / 16777216.0;
+}
+
+// Hash of the lattice point nearest to p.
 float wo_hash(vec2 p) {
-	p = fract(p * vec2(123.34, 456.21));
-	p += dot(p, p + 45.32);
-	return fract(p.x * p.y);
+	return wo_ihash(ivec2(floor(p + 0.5)));
 }
 
 float wo_noise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
+	vec2 fl = floor(p);
+	ivec2 i = ivec2(fl);
+	vec2 f = p - fl;
 	vec2 u = f * f * (3.0 - 2.0 * f);
-	float a = wo_hash(i);
-	float b = wo_hash(i + vec2(1.0, 0.0));
-	float c = wo_hash(i + vec2(0.0, 1.0));
-	float d = wo_hash(i + vec2(1.0, 1.0));
+	float a = wo_ihash(i);
+	float b = wo_ihash(i + ivec2(1, 0));
+	float c = wo_ihash(i + ivec2(0, 1));
+	float d = wo_ihash(i + ivec2(1, 1));
 	return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
