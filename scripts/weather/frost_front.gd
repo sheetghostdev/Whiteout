@@ -24,7 +24,7 @@ var _rot := 0.0
 func configure(p_width: float, p_length: float, p_splinter: bool) -> void:
 	kind = "frost_front"
 	width = p_width
-	speed = 20.0
+	speed = 26.0
 	total = p_length
 	remaining = total
 	strength = 1.0
@@ -68,7 +68,7 @@ func sim_step(dt: float) -> void:
 	var ahead := pos + dir * 3.0
 	var out := not terrain.in_bounds(ahead.x, ahead.y, 5.0)
 	var climb := (terrain.sample_height(ahead.x, ahead.y) - terrain.sample_height(pos.x, pos.y)) / 3.0
-	if out or climb > 1.15:
+	if out or climb > 1.8:
 		if rebounds > 0:
 			rebounds -= 1
 			var n: Vector2

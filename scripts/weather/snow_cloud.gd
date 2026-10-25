@@ -1,17 +1,17 @@
 class_name SnowCloud
 extends WeatherEffect
-## A small cloud that snows on the ground below it. Two roles:
-##   "wake"     - Snow Wake flurries left behind the player; they hang in
-##                place and fade after `life` seconds.
-##   "cloudlet" - companions that orbit the player (or, with Wanderers, roam
-##                to nearby green ground within reach and drift back).
+## A cloudlet: a small companion cloud that snows on the ground below it.
+## Cloudlets fly beside you, just outside your own snowfall, so their snow
+## widens your swath instead of landing where you have been (behind) or
+## where you are about to go (ahead). With Wanderers they roam to nearby
+## green ground within reach, never into your path, and drift back.
 
-var mode := "wake"
+var mode := "cloudlet"
 var slot := 0             # cloudlet index around the player
 var seek := Vector2.INF
 var seek_timer := 0.0
 var new_cov := 0.0
-var orbit := 0.0
+var heading := Vector2(0, -1)
 var _snow_from := Vector2.INF
 
 var _cloud: MeshInstance3D
@@ -20,17 +20,6 @@ var _shadow: MeshInstance3D
 var _mat: ShaderMaterial
 var _y := 0.0
 var _built_r := 0.0
-
-
-## Wake flurries drift slowly off to one side of your path, freezing a
-## strip as they go, which widens your trail behind you.
-func make_wake(at: Vector2, r: float, drift: Vector2, p_life: float) -> void:
-	kind = "snow_cloud"
-	mode = "wake"
-	pos = at
-	radius = r
-	vel = drift
-	life = p_life
 
 
 func make_cloudlet(at: Vector2, k: int) -> void:
@@ -46,29 +35,36 @@ func area() -> float:
 
 
 func altitude() -> float:
-	if mode == "wake":
-		return GameBalance.CLOUD_ALTITUDE + radius * 0.3
 	return GameBalance.CLOUD_ALTITUDE * 0.7 + radius * 0.4
 
 
 func sim_step(dt: float) -> void:
 	var cov := manager.cov
 	age += dt
-	if mode == "cloudlet":
-		_cloudlet_motion(dt)
-	var gain := 0.0
-	if mode == "wake":
-		pos += vel * dt
-	# Small clouds lay snow along their path, like you do: one pass freezes.
+	if mode != "cloudlet":
+		kill()   # Snow Wake flurries from old saves: that upgrade is gone.
+		return
+	_cloudlet_motion(dt)
+	# Cloudlets lay snow along their path, like you do: one pass freezes.
 	if _snow_from == Vector2.INF:
 		_snow_from = pos
 	if _snow_from.distance_to(pos) > 0.05:
-		gain = cov.apply_sweep(_snow_from.x, _snow_from.y, pos.x, pos.y, radius, 1.0, 1.0)
+		var gain := cov.apply_sweep(_snow_from.x, _snow_from.y, pos.x, pos.y, radius, 1.0, 1.0)
 		_snow_from = pos
-	new_cov += cov.last_cov_delta
-	manager.add_gain(gain, cov.last_cov_delta, self)
-	if age >= life:
-		kill()
+		new_cov += cov.last_cov_delta
+		manager.add_gain(gain, cov.last_cov_delta, self)
+
+
+## Where this cloudlet sits beside you: cloudlets alternate left and right,
+## each one just outside your snowfall (or the cloudlet inside it), so the
+## swath you lay together is one wide band.
+func side_spot(host: PlayerCloud) -> Vector2:
+	var side := 1.0 if slot % 2 == 0 else -1.0
+	var row := slot / 2
+	var w := host.snow_width()
+	var out := w + radius * (0.85 + 1.7 * row)
+	var lateral := Vector2(-heading.y, heading.x) * side
+	return host.pos + lateral * out - heading * radius * 0.4 * row
 
 
 func _cloudlet_motion(dt: float) -> void:
@@ -79,20 +75,19 @@ func _cloudlet_motion(dt: float) -> void:
 	var prog := manager.prog
 	radius = host.base_radius() * prog.stat("comp_size")
 	rate = 1.0
-	var count := maxi(int(prog.stat("companions")), 1)
-	var ring := host.radius + radius * 1.2
-	# The orbit turns with your travel, so resting clouds rest too.
-	orbit += host.last_moved / maxf(ring, 1.0) * 0.5
-	var ang := orbit + TAU * slot / count
-	var home := host.pos + Vector2.from_angle(ang) * ring
+	if host.vel.length() > 0.5:
+		heading = heading.lerp(host.vel.normalized(), 1.0 - exp(-dt * 3.0)).normalized()
+	var home := side_spot(host)
 	var target := home
+	var w := host.snow_width()
 	if prog.has("wanderers") and host.is_active():
-		var leash := prog.stat("comp_leash") + host.radius
+		var leash := prog.stat("comp_leash") + w
 		seek_timer -= dt
-		var stale := seek == Vector2.INF or cov_at(seek) >= 0.98 or seek.distance_to(host.pos) > leash
+		var stale := seek == Vector2.INF or cov_at(seek) >= 0.98 or seek.distance_to(host.pos) > leash \
+				or _in_your_way(host, seek)
 		if seek_timer <= 0.0 or stale:
-			seek = manager.cov.find_nearest_unfrozen_area(home, leash, 3, _avoid())
-			if seek != Vector2.INF and seek.distance_to(host.pos) > leash:
+			seek = manager.cov.find_nearest_unfrozen_area(home, leash, 3, _avoid(host))
+			if seek != Vector2.INF and (seek.distance_to(host.pos) > leash or _in_your_way(host, seek)):
 				seek = Vector2.INF
 			seek_timer = 1.2
 		if seek != Vector2.INF:
@@ -102,17 +97,41 @@ func _cloudlet_motion(dt: float) -> void:
 	var own := to.normalized() * minf(to.length() * 2.0, top) if to.length() > 0.3 else Vector2.ZERO
 	vel = vel.lerp(own, 1.0 - exp(-dt * 3.0))
 	pos += vel * dt
+	# Never drift into your own snowfall: step back out to its edge.
+	var away := pos - host.pos
+	var keep_out := w + radius * 0.8
+	if away.length() < keep_out:
+		var dir := away.normalized() if away.length() > 0.01 else Vector2(-heading.y, heading.x)
+		pos = host.pos + dir * keep_out
 	var lim := GameBalance.WORLD_HALF - 1.0
 	pos = pos.clamp(Vector2(-lim, -lim), Vector2(lim, lim))
+
+
+## True when `p` is inside your snowfall or in the strip just ahead of you
+## that you are about to snow on anyway.
+func _in_your_way(host: PlayerCloud, p: Vector2) -> bool:
+	var w := host.snow_width()
+	var rel := p - host.pos
+	if rel.length() < w + radius:
+		return true
+	var along := rel.dot(heading)
+	var across := absf(rel.dot(Vector2(-heading.y, heading.x)))
+	return host.is_active() and along > 0.0 and along < w * 6.0 and across < w + radius * 0.5
 
 
 func cov_at(p: Vector2) -> float:
 	return manager.cov.get_coverage(p.x, p.y)
 
 
-## Targets already claimed by other cloudlets, so they spread out.
-func _avoid() -> Array:
-	var out: Array = []
+## Places to stay away from: your snowfall, the strip just ahead of you,
+## and targets already claimed by other cloudlets, so they spread out.
+func _avoid(host: PlayerCloud) -> Array:
+	var w := host.snow_width()
+	var out: Array = [Vector3(host.pos.x, host.pos.y, w + radius)]
+	if host.is_active():
+		for k in range(1, 4):
+			var a := host.pos + heading * w * 1.6 * k
+			out.append(Vector3(a.x, a.y, w + radius * 0.5))
 	for e in manager.effects_of("snow_cloud"):
 		var c := e as SnowCloud
 		if c != self and c.mode == "cloudlet" and c.seek != Vector2.INF:
@@ -157,15 +176,10 @@ func visual_update(delta: float, t: float) -> void:
 	global_position = Vector3(p.x, _y, p.y)
 	_cloud.rotation.y += delta * 0.08
 	var f := vis
-	var size := 1.0
-	if mode == "wake":
-		# Wake flurries are thin wisps: mostly falling snow, barely any cloud.
-		f *= clampf((life - age) / 1.0, 0.0, 1.0) if alive else 1.0
-		size = 0.45
-	_mat.set_shader_parameter("fade", f * (0.45 if mode == "wake" else 1.0))
-	var s := lerpf(0.6, 1.0, f) * size
+	_mat.set_shader_parameter("fade", f)
+	var s := lerpf(0.6, 1.0, f)
 	_cloud.scale = Vector3(radius * 1.05, radius * 0.7, radius * 1.05) * s
-	_snow.emitting = alive and age < life - 0.6
+	_snow.emitting = alive
 	_shadow.global_position = Vector3(p.x, 0.0, p.y)
 	_shadow.scale = Vector3(radius, 1.0, radius)
 	(_shadow.material_override as ShaderMaterial).set_shader_parameter("intensity", f)

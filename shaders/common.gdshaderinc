@@ -116,24 +116,22 @@ float wo_cov_smooth(vec2 xz) {
 	return g0.y * (g0.x * a + g1.x * b) + g1.y * (g0.x * c + g1.x * d);
 }
 
-// Coverage with an organic wobble along snow edges: a broad meander plus a
-// finer ripple, so even a perfectly straight pass never leaves a ruled line.
+// Coverage with a gentle organic wobble along snow edges, so even a
+// perfectly straight pass never leaves a ruled line. The wobble is kept
+// under about a metre so the drawn edge stays on the real one.
 float wo_cov_warped(vec2 xz) {
-	vec2 broad = vec2(wo_rfbm(xz * 0.05), wo_rfbm(xz * 0.05 + 47.3)) - 0.5;
-	vec2 mid = vec2(wo_rfbm(xz * 0.16 + 9.1), wo_rfbm(xz * 0.16 + 21.7)) - 0.5;
-	vec2 fine = vec2(wo_rnoise(xz * 0.5), wo_rnoise(xz * 0.5 + 31.7)) - 0.5;
-	return wo_cov_smooth(xz + broad * 2.8 + mid * 1.4 + fine * 0.7);
+	vec2 broad = vec2(wo_rfbm(xz * 0.07), wo_rfbm(xz * 0.07 + 47.3)) - 0.5;
+	vec2 fine = vec2(wo_rnoise(xz * 0.45), wo_rnoise(xz * 0.45 + 31.7)) - 0.5;
+	return wo_cov_smooth(xz + broad * 1.3 + fine * 0.5);
 }
 
-// Maps coverage 0..1 to a visible snow mask with natural patchy accumulation.
-// Coverage >= 0.97 is always fully white, so "looks frozen" == "is frozen".
-// Snow edges fade in from nothing with zero slope, so the boundary between
-// snow and grass is always a soft, irregular blend - never a drawn line.
+// Coverage -> how white the ground is. Ground is either frozen or not, and
+// the picture says so: the edge is a soft but narrow band (about a metre)
+// centred on the true boundary between frozen and green cells, so frozen
+// ground is solid white right up to its edge and green ground stays green.
 float wo_snow_mask(float c, vec2 xz) {
-	float s = clamp((c - 0.02) / 0.95, 0.0, 1.0);
-	float n = wo_rfbm(xz * 0.18) - 0.5;
-	float m = clamp(s + n * 0.3 * s * (1.0 - s) * 4.0, 0.0, 1.0);
-	return m * m * (3.0 - 2.0 * m);
+	float n = wo_rfbm(xz * 0.21) - 0.5;
+	return smoothstep(0.34, 0.62, c + n * 0.1);
 }
 
 vec3 wo_snow_color(vec3 world_normal, vec2 xz) {

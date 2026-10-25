@@ -29,6 +29,7 @@ var chunk_incomplete := PackedInt32Array()
 var chunk_dirty := PackedByteArray()
 var fill_dirty := PackedByteArray()      # chunks touched since the last drift-fill pass
 var gap_reach := 2                       # drift fill seals gaps up to 2 * reach - 1 cells wide
+var _spread_chunk := 0
 var any_dirty := false
 
 var region_sum := PackedFloat64Array()
@@ -596,6 +597,57 @@ func _frozen_within(x: int, z: int, dx: int, dz: int) -> bool:
 		if cov[nz * N + nx] >= 1.0:
 			return true
 	return false
+
+
+## Spreading Frost: freezes up to `cells` green cells that border frozen
+## land (at least 3 of their 8 neighbours), one per partly frozen chunk at
+## a time, round after round, so frozen ground creeps outward evenly along
+## every edge. The open sea never counts as frozen here, so coasts do not
+## creep inland by themselves. Returns the Frost gained.
+func spread_tick(cells: int) -> float:
+	var gain := 0.0
+	var visited := 0
+	var since_progress := 0
+	while cells > 0 and since_progress < CH * CH:
+		var ch := _spread_chunk
+		_spread_chunk = (_spread_chunk + 1) % (CH * CH)
+		visited += 1
+		since_progress += 1
+		var inc := chunk_incomplete[ch]
+		if inc == 0 or inc >= land_per_chunk[ch]:
+			continue
+		var bx := (ch % CH) * CS
+		var bz := (ch / CH) * CS
+		var start := (visited * 37) % (CS * CS)
+		for k in CS * CS:
+			var o := (start + k) % (CS * CS)
+			var x := bx + o % CS
+			var z := bz + o / CS
+			var i := z * N + x
+			if cov[i] >= 1.0 or void_cells[i] == 1:
+				continue
+			if _frozen_land_neighbours(x, z) >= 3:
+				gain += _set_cell(i, 1.0)
+				cells -= 1
+				since_progress = 0
+				break
+	return gain
+
+
+func _frozen_land_neighbours(x: int, z: int) -> int:
+	var n := 0
+	for oz in range(-1, 2):
+		var nz := z + oz
+		if nz < 0 or nz >= N:
+			continue
+		for ox in range(-1, 2):
+			var nx := x + ox
+			if (ox == 0 and oz == 0) or nx < 0 or nx >= N:
+				continue
+			var j := nz * N + nx
+			if cov[j] >= 1.0 and void_cells[j] == 0:
+				n += 1
+	return n
 
 
 ## Fills tiny isolated holes that are visually insignificant. Only touches

@@ -46,23 +46,36 @@ All bindings can be changed in Settings → Controls.
   pass - there is no half-frozen ground to hunt for. Resting lays nothing
   and earns nothing. Each square metre pays **Frost** only once. Snow
   drifts into narrow gaps between your passes by itself (up to about 3 m,
-  or 7 m with Deep Freeze), a soft ring on the ground shows exactly how wide
+  wider with Drifting Snow and Deep Freeze). What looks white is frozen and
+  what looks green is not: the snow edge is a narrow soft band on the real
+  boundary. A soft ring on the ground shows exactly how wide
   your snow falls (it can be hidden in Settings), and near the end the last
   green ground glows softly. The late Snow Compass upgrade adds an arrow to
   the nearest green ground when none is close.
 - **One flying speed.** There is no sprint key: Breeze, Gale and Jet Stream
-  raise your speed, and Tailwind makes you faster over frozen ground.
-- **One currency, one upgrade web.** Frost buys nodes in a web of 48
+  raise your speed, and Tailwind makes you 30% faster while your whole cloud
+  is over frozen ground (skimming the edge of your trail does not count).
+- **One currency, one upgrade web.** Frost buys nodes in a web of 44
   upgrades across seven branches: Size, Snowfall, Wind, Cloudlets, Storm
   skills, The Land and Polar. Finishing a node reveals only its neighbours,
-  so a handful of choices are open at a time.
-- **Keystones change how you play:** Deep Freeze, Tailwind, Snow Wake,
+  so a handful of choices are open at a time. No two kinds of upgrade do
+  the same thing: size nodes make your cloud (and so its snowfall) bigger,
+  Drifting Snow seals the gaps you miss, Spreading Frost lets frozen ground
+  creep into the green beside it, and so on. Later nodes of the same kind
+  ("grow larger still") are simply more of it.
+- **Keystones change how you play:** Deep Freeze, Tailwind,
   Wanderers (cloudlets roam to green ground), Splintering Frost, Avalanche
-  Rider (drift over a snowy mountainside to set it sliding; small hills never slide), Mountain Air,
+  Rider (drift over a snowy mountainside to set it sliding; small hills
+  never slide), Mountain Air,
   Thunderhead, Absolute Zero, Thaw Sense.
-- **Three active skills** keep your hands busy to the end: Squall (a ring of
-  snow), Frost Wave (a rolling strip of frost where you look) and Vortex
-  Form (swell to several times your size for a few seconds).
+- **Three active skills** keep your hands busy to the end, and all of them
+  scale with your size so they never fall behind: Squall (a ring of snow
+  1.4x as far as your own snowfall reaches), Frost Wave (a wave as wide as
+  your trail that rolls 35 m or more where you look) and Vortex Form (swell
+  to several times your size for a few seconds).
+- **Cloudlets** fly beside you, just outside your own snowfall, so their
+  snow widens your swath instead of landing behind you or where you are
+  about to go.
 - **The island:** Central Meadows, Woodland, Lake District and Highlands,
   ringed by beaches and rocky shores, with distant islands on the horizon.
   A mountain stream runs from a tarn down to the lake, and the lake drains
@@ -105,7 +118,7 @@ recent popular incrementals:
 - **Choice overload** comes from the number of options faced at once, not
   the total. Revealing neighbours only when a node is finished keeps about
   six open nodes on screen on average (roughly one per branch), while the
-  whole web still holds 48 nodes and over 110 levels.
+  whole web still holds 44 nodes and about 100 levels.
 
 ## Project layout
 
@@ -170,23 +183,23 @@ The balancing bot (`scripts/tests/balance_bot.gd`) plays the real
 simulation: it flies the cloud to the nearest green ground, drifts slowly
 over it in passes, fires skills when they would hit green ground, and shops by strategy (cheapest first, spread across
 branches, random, saving up, skills last). With the current tuning every
-strategy completes the island in about 13½–14½ bot-minutes. The first
+strategy completes the island in about 10½–13 bot-minutes. The first
 purchase lands within seconds, and there is never much more than a minute
-without an affordable upgrade. About 60% of the web gets bought, with about
-6 open choices on average (11 at most), and the cloud ends at roughly a
-13 m radius. The bot always knows where the nearest green is and never
+without an affordable upgrade. About two thirds of the web gets bought, with
+about 5 open choices on average (9 at most), and the cloud ends at roughly a
+16 m radius. The bot always knows where the nearest green is and never
 pauses, so a person should take noticeably longer (roughly 25–35
 minutes); that still needs real playtesting to confirm.
 
 `scenes/visual_tour.tscn` boots the game, performs scripted actions and
 saves screenshots to `user://tour/` (scenarios: `basic`, `fx`, `late`,
-`ui`, `complete`, `island`, `snowcheck`, `round3`, `round4`).
+`ui`, `complete`, `island`, `snowcheck`, `round3`, `round4`, `edge`, `edgecloudlets`).
 
 ## Performance notes
 
 Simulation cost was measured headlessly: a maxed late-game cloud in Vortex
-Form with every skill firing, a full set of wandering cloudlets and a long
-wake averages well under 1 ms per frame, and the worst single frame stays
+Form with every skill firing, a full set of wandering cloudlets and
+spreading frost averages well under 1 ms per frame, and the worst single frame stays
 under 5 ms. Very large clouds update interleaved rows of the coverage grid
 to keep that cost flat. Rendering was verified with software rasterizers
 (Mesa llvmpipe); GPU frame times on real desktop hardware have not yet been

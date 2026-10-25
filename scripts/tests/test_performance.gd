@@ -31,7 +31,7 @@ func run(t, _full: bool) -> void:
 	t.check(frozen_us < 500.0, "frozen chunks are skipped rather than rescanned")
 
 	# A worst-case late game: maxed cloud in Vortex Form with every skill and
-	# keystone firing, a full flock of wandering cloudlets and a long wake.
+	# keystone firing, a full flock of wandering cloudlets and spreading frost.
 	var prog := Progression.new()
 	prog.add_frost(1.0e12)
 	prog.world_fraction = 1.0

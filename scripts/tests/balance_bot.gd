@@ -115,7 +115,7 @@ func _checks() -> void:
 			milestone_times[m] = t
 			if "log" in OS.get_cmdline_user_args():
 				print("        @%d%% t=%s r=%.1f rate=%.2f speed=%.1f frost=%s cloudlets=%d spent=%d%% %s" % [int(m * 100), UIKit.fmt_time(t),
-					prog.stat("radius"), prog.stat("rate"), prog.stat("speed"), UIKit.fmt(prog.lifetime_frost), int(prog.stat("companions")), int(spent_fraction() * 100), _src_line()])
+					prog.stat("radius"), prog.stat("drift"), prog.stat("speed"), UIKit.fmt(prog.lifetime_frost), int(prog.stat("companions")), int(spent_fraction() * 100), _src_line()])
 	# Choices in front of the player: revealed nodes they could buy now or soon.
 	var open := 0
 	for id in prog.frontier():
@@ -175,7 +175,7 @@ func _use_skills() -> void:
 		return
 	var pos := cloud.pos
 	if prog.has("squall") and w.cooldown_remaining("squall") <= 0.0:
-		if _green_around(pos, prog.stat("squall_radius") * 0.6 + cloud.radius) > 0.35:
+		if _green_around(pos, prog.stat("squall_radius") * cloud.snow_width() * 0.6) > 0.35:
 			w.use_skill("squall", Vector2.UP)
 	if prog.has("frost_wave") and w.cooldown_remaining("frost_wave") <= 0.0:
 		var best := Vector2.ZERO

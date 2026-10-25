@@ -202,6 +202,9 @@ func from_dict(d: Dictionary) -> void:
 	for k in lv:
 		if GameBalance.NODES.has(k):
 			levels[k] = mini(int(lv[k]), int(GameBalance.NODES[k]["max"]))
+		else:
+			# Upgrades that no longer exist: hand back what was spent on them.
+			frost += GameBalance.retired_refund(String(k), int(lv[k]))
 	claimed_world_milestones = []
 	for v in d.get("claimed_world_milestones", []):
 		claimed_world_milestones.append(int(v))

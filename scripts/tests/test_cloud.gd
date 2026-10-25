@@ -94,7 +94,7 @@ func _snowfall(t) -> void:
 	# Bigger and snowier clouds freeze more per pass.
 	var prog2 := Progression.new()
 	prog2.levels["billow"] = 5
-	prog2.levels["flurry"] = 3
+	prog2.levels["swell"] = 3
 	var w2 := _world(t, prog2)
 	var c2 := w2.spawn_player_cloud(Vector2(0, 80))
 	c2.move_input = Vector2(1, 0)
@@ -110,24 +110,7 @@ func _snowfall(t) -> void:
 	w3.queue_free()
 
 
-func _freeze_rate(t, levels: Dictionary, seconds: float = 8.0, throttle: float = 1.0, there_and_back: bool = false) -> float:
-	var prog := Progression.new()
-	for k in levels:
-		prog.levels[k] = levels[k]
-	var w := _world(t, prog)
-	var c := w.spawn_player_cloud(Vector2(-60, 120))
-	c.move_input = Vector2(throttle, 0)
-	_run(w, seconds)
-	if there_and_back:
-		c.move_input = Vector2(-throttle, 0)
-		_run(w, seconds)
-	var v := w.cov.total_sum
-	w.queue_free()
-	return v
-
-
 func _keystones(t) -> void:
-	var base := {"billow": 5, "swell": 3, "flurry": 5, "heavy_snow": 3}
 	# Deep Freeze lets drifting snow seal much wider gaps between passes.
 	var pdf := Progression.new()
 	var wdf := _world(t, pdf)
@@ -136,20 +119,52 @@ func _keystones(t) -> void:
 	_run(wdf, 0.6)
 	t.check(wdf.cov.gap_reach > 2, "Deep Freeze widens the gaps drifting snow can seal")
 	wdf.queue_free()
+	var pds := Progression.new()
+	var wds := _world(t, pds)
+	wds.spawn_player_cloud(Vector2(0, 0))
+	_run(wds, 0.6)
+	var reach0 := wds.cov.gap_reach
+	pds.levels["drift_snow"] = 2
+	_run(wds, 0.6)
+	t.check(wds.cov.gap_reach > reach0, "Drifting Snow seals wider gaps (%d -> %d)" % [reach0, wds.cov.gap_reach])
+	wds.queue_free()
 	# Tailwind: fast over frozen ground, normal speed over green.
 	var pt := Progression.new()
 	pt.levels["tailwind"] = 1
 	var wt := _world(t, pt)
 	var ct := wt.spawn_player_cloud(Vector2(0, 80))
 	var v_green := ct.max_speed()
-	wt.cov.apply_disc(0, 80, 6.0, 1.0)
-	t.check(ct.max_speed() > v_green * 1.4 and v_green == pt.stat("speed"), "Tailwind speeds you over frozen ground only")
+	# Riding the edge of your own trail: half the cloud over frozen ground.
+	for x in range(-10, 1):
+		for z in range(70, 91):
+			wt.cov.apply_disc(x, z, 0.8, 1.0)
+	var v_edge := ct.max_speed()
+	wt.cov.apply_disc(0, 80, 8.0, 1.0)
+	var v_frozen := ct.max_speed()
+	t.check(v_green == pt.stat("speed") and v_frozen > v_green * 1.25 and v_frozen < v_green * 1.35,
+		"Tailwind: 30%% faster over frozen ground (%.1f -> %.1f m/s)" % [v_green, v_frozen])
+	t.check(v_edge < v_green * 1.02, "Tailwind gives nothing while you skim the edge of your trail (%.2f)" % v_edge)
 	wt.queue_free()
-	var wake := base.duplicate()
-	wake["snow_wake"] = 1
-	var w_on := _freeze_rate(t, wake, 10.0)
-	var w_off := _freeze_rate(t, base, 10.0)
-	t.check(w_on > w_off * 1.1, "Snow Wake leaves snowing flurries behind (%.0f vs %.0f)" % [w_on, w_off])
+	# Spreading Frost: frozen ground creeps into the green beside it while you fly.
+	var ps := Progression.new()
+	ps.levels["spreading"] = 3
+	var ws := _world(t, ps)
+	var cs := ws.spawn_player_cloud(Vector2(-60, 120))
+	ws.cov.apply_disc(40, 60, 10.0, 1.0)
+	var ring_before := ws.cov.get_coverage(50.5, 60.5)
+	cs.move_input = Vector2(1, 0)
+	_run(ws, 8.0)
+	var spread_area := float(ws.area_by_source.get("spreading", 0.0))
+	t.check(spread_area > 40.0 and spread_area < 140.0, "Spreading Frost creeps outward about 12 m²/s (%.0f m² in 8 s)" % spread_area)
+	t.check(ring_before == 0.0, "spreading only starts from frozen ground")
+	var ws2 := _world(t, Progression.new())
+	var cs2 := ws2.spawn_player_cloud(Vector2(-60, 120))
+	ws2.cov.apply_disc(40, 60, 10.0, 1.0)
+	cs2.move_input = Vector2(1, 0)
+	_run(ws2, 8.0)
+	t.check(float(ws2.area_by_source.get("spreading", 0.0)) == 0.0, "no spreading without the upgrade")
+	ws.queue_free()
+	ws2.queue_free()
 	# Thunderhead is a big jump.
 	var p := Progression.new()
 	var r0 := p.stat("radius")
@@ -229,6 +244,16 @@ func _companions(t) -> void:
 	for k in c.cloudlets:
 		far = maxf(far, k.pos.distance_to(c.pos))
 	t.check(far < c.radius * 4.0 + 6.0, "cloudlets keep up with you (%.1f m)" % far)
+	var inside := 0
+	var ahead := 0
+	for k in c.cloudlets:
+		var rel: Vector2 = k.pos - c.pos
+		if rel.length() < c.snow_width() + k.radius * 0.8 - 0.05:
+			inside += 1
+		if rel.dot(Vector2(1, 0)) > c.snow_width():
+			ahead += 1
+	t.check(inside == 0, "cloudlets stay outside your own snowfall")
+	t.check(ahead == 0, "cloudlets fly beside you, not out in front")
 	prog.levels["wanderers"] = 1
 	for k in 8:
 		c.move_input = Vector2(0.3 if k % 2 == 0 else -0.3, 0)

@@ -37,9 +37,9 @@ func _ready() -> void:
 			await _round4()
 		"edge":
 			await _edge()
-		"edgewake":
-			for id in ["billow", "flurry", "snow_wake", "long_wake"]:
-				Game.prog.levels[id] = 2 if id != "snow_wake" else 1
+		"edgecloudlets":
+			for id in ["billow", "cloudlet", "more_cloudlets"]:
+				Game.prog.levels[id] = 2 if id != "cloudlet" else 1
 			await _edge()
 	get_tree().quit()
 
@@ -101,10 +101,10 @@ func _basic() -> void:
 	await _fly(Vector2(0, -1), 4.0)
 	await _sleep(1.0)
 	await _shot("02_drift")
-	# A mid-game cloud: bigger, with cloudlets and a wake.
+	# A mid-game cloud: bigger, with cloudlets.
 	var prog := Game.prog
 	prog.add_frost(60000)
-	for id in ["billow", "flurry", "breeze", "cloudlet", "squall", "more_cloudlets", "swell", "gale", "snow_wake", "heavy_snow"]:
+	for id in ["billow", "flurry", "breeze", "cloudlet", "squall", "more_cloudlets", "swell", "gale", "spreading"]:
 		for i in 5:
 			prog.purchase(id)
 	Game.main.hud.refresh_all()
@@ -161,11 +161,11 @@ func _ui() -> void:
 	Game.main.open_overlay("shop")
 	await _frames(10)
 	await _shot("20_web_start")
-	for id in ["billow", "flurry", "squall", "breeze", "ice_creep"]:
+	for id in ["billow", "drift_snow", "squall", "breeze", "ice_creep"]:
 		Game.main.web._buy(id)
 	Game.prog.add_frost(400)
 	Game.main.web._refresh()
-	Game.main.web._set_hover("dense_core")
+	Game.main.web._set_hover("spreading")
 	await _frames(10)
 	await _shot("20b_web_grown")
 	Game.main.close_overlay()
@@ -296,7 +296,7 @@ func _snowcheck() -> void:
 	await _shot("51_done_top")
 	# A natural trail flown by the cloud.
 	Game.prog.add_frost(500)
-	for id in ["billow", "flurry", "breeze"]:
+	for id in ["billow", "drift_snow", "breeze"]:
 		for i in 5:
 			Game.prog.purchase(id)
 	_cloud().pos = Vector2(-60, 120)

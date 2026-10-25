@@ -12,7 +12,6 @@ extends WeatherEffect
 var move_input := Vector2.ZERO   # world-space wish direction, length 0..1
 var altitude_offset := 0.0
 var distance := 0.0
-var _wake_acc := 0.0
 var _av_timer := 0.0
 var _snow_phase := 0
 var vortex_t := 0.0
@@ -24,7 +23,6 @@ var last_moved := 0.0      # metres flown in the latest snowfall step
 var idle_time := 10.0      # seconds since the cloud last really moved
 var _snow_from := Vector2.INF
 var _resting := true
-var _wake_side := 1.0
 
 # visuals
 var _body: Node3D
@@ -56,9 +54,29 @@ func max_speed() -> float:
 	var p := manager.prog
 	var s := p.stat("speed")
 	# Tailwind: fast over finished ground, so reaching fresh green is quick.
-	if p.has("tailwind") and manager.cov.get_coverage(pos.x, pos.y) >= 1.0:
-		s *= 1.5
+	# It only counts when nearly all of your snowfall is over frozen ground,
+	# so skimming along the edge of your own trail gets no boost.
+	if p.has("tailwind"):
+		s *= 1.0 + 0.3 * smoothstep(0.8, 0.97, frozen_under())
 	return s
+
+
+## Fraction of the ground under your snowfall that is already frozen
+## (centre plus two rings of samples across the footprint).
+func frozen_under() -> float:
+	var cov := manager.cov
+	var w := snow_width()
+	var n := 0.0
+	var frozen := 0.0
+	for k in 17:
+		var off := Vector2.ZERO
+		if k > 0:
+			var ring := 0.45 if k <= 8 else 0.9
+			off = Vector2.from_angle(TAU * float(k % 8) / 8.0 + (0.39 if k > 8 else 0.0)) * w * ring
+		n += 1.0
+		if cov.get_coverage(pos.x + off.x, pos.y + off.y) >= 1.0:
+			frozen += 1.0
+	return frozen / n
 
 
 ## 0..1 how far into Vortex Form the cloud is (eases in and out).
@@ -106,16 +124,12 @@ func sim_step(dt: float) -> void:
 		_snow_phase = 0
 		_snowfall(dt * WeatherManager.PHASES)
 		_sync_cloudlets()
-		_wake(moved)
-	else:
-		_wake_acc += moved
 
 
 ## Half-width of the strip your snow freezes, in metres. Everything inside
 ## it freezes completely in one pass, so there is never half-done ground.
 func snow_width() -> float:
-	var prog := manager.prog
-	var w := radius * prog.stat("rate")
+	var w := radius
 	if high_ground:
 		w *= 1.3
 	return w
@@ -155,27 +169,6 @@ func _snowfall(dt: float) -> void:
 	if _av_timer <= 0.0:
 		_av_timer = 0.4
 		manager.try_ride_avalanche(pos)
-
-
-func _wake(moved: float) -> void:
-	_wake_acc += moved
-	var life_s := manager.prog.stat("wake_life")
-	if life_s <= 0.0:
-		_wake_acc = 0.0
-		return
-	var spacing := maxf(radius * 0.6, 2.0)
-	if _wake_acc < spacing:
-		return
-	_wake_acc = 0.0
-	if not manager.can_spawn("snow_cloud"):
-		return
-	var w := SnowCloud.new()
-	# Flurries peel off the edge of your trail and drift outward, widening it.
-	_wake_side = -_wake_side
-	var side := Vector2(-vel.y, vel.x).normalized() * _wake_side
-	var r := base_radius() * 0.5
-	w.make_wake(pos + side * maxf(snow_width() - r, 0.0), r, side * 2.0, life_s)
-	manager.spawn(w, -1, "snow_wake")
 
 
 func _sync_cloudlets() -> void:
@@ -253,7 +246,7 @@ func _build_snow() -> void:
 	if _snow != null:
 		_snow.queue_free()
 	_built_r = radius
-	var amount := int(clampf(80.0 + radius * radius * 3.5, 80.0, 1800.0) * WeatherFX.visual_complexity)
+	var amount := int(clampf(80.0 + radius * radius * 3.5, 80.0, 1200.0) * WeatherFX.visual_complexity)
 	_snow = WeatherFX.snowfall(radius * 0.85, altitude(), amount, 4.0, 0.17)
 	_snow_mat = _snow.process_material
 	add_child(_snow)
@@ -277,7 +270,9 @@ func _clearance(p: Vector2) -> float:
 func visual_update(delta: float, t: float) -> void:
 	if _body == null:
 		return
-	if absf(radius - _built_r) > _built_r * 0.25:
+	# Rebuild the snowfall only when you have really grown (an upgrade), not
+	# while a vortex swells and shrinks: the ring radius follows you anyway.
+	if vortex_amount() <= 0.0 and absf(radius - _built_r) > _built_r * 0.25:
 		_build_snow()
 	_snow_mat.emission_ring_radius = radius * 0.85
 	var p := interp_pos(t)

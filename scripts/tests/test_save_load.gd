@@ -23,7 +23,7 @@ func run(t, _full: bool) -> void:
 	prog.add_frost(5000)
 	prog.purchase("billow")
 	prog.purchase("billow")
-	prog.purchase("flurry")
+	prog.purchase("drift_snow")
 	prog.purchase("squall")
 	prog.stats["time"] = 1234.5
 	var frost_before := prog.frost
@@ -58,7 +58,7 @@ func run(t, _full: bool) -> void:
 	var prog2 := Progression.new()
 	prog2.from_dict(d["progression"])
 	t.approx(prog2.frost, frost_before, 0.001, "Frost persists")
-	t.check(prog2.level("billow") == 2 and prog2.level("flurry") == 1, "purchased nodes persist")
+	t.check(prog2.level("billow") == 2 and prog2.level("drift_snow") == 1, "purchased nodes persist")
 	t.check(prog2.has("squall") and "squall" in prog2.unlocked_skills(), "bought skills persist")
 	t.approx(prog2.stat("radius"), prog.stat("radius"), 0.0001, "stats rebuild from levels")
 	t.approx(float(prog2.stats["time"]), 1234.5, 0.001, "statistics persist")

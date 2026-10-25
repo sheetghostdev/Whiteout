@@ -107,6 +107,18 @@ func run(t, _full: bool) -> void:
 		dr.drift_fill(256)
 	t.check(dr.get_coverage(0, 76.5) == 1.0, "Deep Freeze seals a 5 m gap too")
 	t.check(dr.get_coverage(0, 92.0) == 0.0, "even Deep Freeze leaves open ground alone")
+	# Spreading Frost creeps from frozen land, never in from the sea.
+	var sp := SnowCoverage.new()
+	sp.setup(terrain)
+	var left0 := sp.total_incomplete
+	sp.spread_tick(200)
+	t.check(sp.total_incomplete == left0, "spreading frost never starts from the open sea")
+	sp.apply_disc(0, 60, 6.0, 1.0)
+	var left1 := sp.total_incomplete
+	sp.spread_tick(30)
+	t.check(left1 - sp.total_incomplete == 30, "spreading frost freezes exactly as many cells as asked (%d)" % (left1 - sp.total_incomplete))
+	t.check(sp.get_coverage(0, 75.0) == 0.0, "spreading frost only touches ground next to frozen ground")
+	_consistency(t, sp, "after spreading")
 	# A pass at full strength leaves no half-frozen ground at its edges.
 	var edge := SnowCoverage.new()
 	edge.setup(terrain)

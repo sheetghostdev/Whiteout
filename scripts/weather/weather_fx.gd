@@ -93,7 +93,6 @@ static func snowfall(radius: float, height: float, base_amount: int, fall_speed:
 	var amount := maxi(4, int(base_amount * particle_density))
 	p.amount = amount
 	p.lifetime = height / fall_speed
-	p.preprocess = p.lifetime * 0.5
 	p.local_coords = false
 	p.draw_pass_1 = flake_mesh()
 	var m := ParticleProcessMaterial.new()
@@ -103,7 +102,6 @@ static func snowfall(radius: float, height: float, base_amount: int, fall_speed:
 	m.emission_ring_inner_radius = 0.0
 	m.emission_ring_height = 1.0
 	m.direction = Vector3(0, -1, 0)
-	m.spread = 6.0
 	m.initial_velocity_min = fall_speed * 0.8
 	m.initial_velocity_max = fall_speed * 1.2
 	m.gravity = Vector3(0, -0.5, 0)
@@ -113,11 +111,11 @@ static func snowfall(radius: float, height: float, base_amount: int, fall_speed:
 	m.angle_max = 360.0
 	m.angular_velocity_min = -90.0
 	m.angular_velocity_max = 90.0
-	m.turbulence_enabled = true
-	m.turbulence_noise_strength = 0.6
-	m.turbulence_noise_scale = 3.0
-	m.turbulence_influence_min = 0.04
-	m.turbulence_influence_max = 0.12
+	# No particle turbulence and no preprocessing: both are heavy GPU compute
+	# jobs, and several emitters rebuilt in one frame (buying cloudlets, a
+	# vortex swelling) could stall the GPU long enough for the driver to give
+	# up (VK_ERROR_DEVICE_LOST). A little sideways drift does the same job.
+	m.spread = 10.0
 	m.color_ramp = _fade_ramp()
 	p.process_material = m
 	p.visibility_aabb = AABB(Vector3(-radius - 6.0, -height - 6.0, -radius - 6.0), Vector3(radius * 2.0 + 12.0, height + 12.0, radius * 2.0 + 12.0))
@@ -143,10 +141,6 @@ static func streaks(box: Vector3, base_amount: int, velocity: Vector3, life: flo
 	m.scale_min = 0.8
 	m.scale_max = 1.6
 	m.color_ramp = _fade_ramp()
-	m.turbulence_enabled = true
-	m.turbulence_noise_strength = 0.5
-	m.turbulence_influence_min = 0.03
-	m.turbulence_influence_max = 0.08
 	p.process_material = m
 	var ext := box + Vector3.ONE * (velocity.length() * life + 4.0)
 	p.visibility_aabb = AABB(-ext, ext * 2.0)

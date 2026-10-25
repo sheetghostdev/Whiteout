@@ -17,21 +17,21 @@ extends RefCounted
 # ------------------------------------------------------------------- stats
 # mode "add": base + sum(per * level)      mode "mul": base * prod(per ^ level)
 const STATS := {
-	"radius": {"base": 2.2, "mode": "add", "fmt": "%.1f m", "name": "Cloud radius"},
-	"rate": {"base": 1.0, "mode": "add", "fmt": "%d%% of your size", "pct": true, "name": "Snowfall width"},
+	"radius": {"base": 2.5, "mode": "add", "fmt": "%.1f m", "name": "Cloud radius"},
 	"speed": {"base": 2.7, "mode": "add", "fmt": "%.1f m/s", "name": "Flying speed"},
 	"frost_mult": {"base": 1.0, "mode": "add", "fmt": "%.2fx", "name": "Frost per m²"},
 	"companions": {"base": 0.0, "mode": "add", "fmt": "%d", "name": "Cloudlets"},
 	"comp_size": {"base": 0.25, "mode": "add", "fmt": "%d%% of you", "pct": true, "name": "Cloudlet size"},
 	"comp_leash": {"base": 14.0, "mode": "add", "fmt": "%d m", "name": "Cloudlet reach"},
-	"wake_life": {"base": 0.0, "mode": "add", "fmt": "%.1f s", "name": "Snow wake"},
+	"drift": {"base": 3.0, "mode": "add", "fmt": "%d m", "name": "Gaps that drift shut"},
+	"spread": {"base": 0.0, "mode": "add", "fmt": "%d m²/s", "name": "Spreading frost"},
 	"ice_creep": {"base": 0.15, "mode": "add", "fmt": "%.2f /s", "name": "Ice creep"},
 	"region_bonus": {"base": 1.0, "mode": "add", "fmt": "%.1fx", "name": "Milestone bonus"},
-	"squall_radius": {"base": 3, "mode": "add", "fmt": "%d m", "name": "Squall radius"},
+	"squall_radius": {"base": 1.4, "mode": "add", "fmt": "%.1fx your size", "name": "Squall reach"},
 	"squall_cd": {"base": 12, "mode": "mul", "fmt": "%.1f s", "name": "Squall recharge"},
-	"wave_length": {"base": 30, "mode": "add", "fmt": "%d m", "name": "Wave reach"},
-	"wave_width": {"base": 5, "mode": "add", "fmt": "%d m", "name": "Wave width"},
-	"wave_cd": {"base": 8, "mode": "mul", "fmt": "%.1f s", "name": "Wave recharge"},
+	"wave_length": {"base": 35, "mode": "add", "fmt": "%d m", "name": "Wave reach"},
+	"wave_width": {"base": 0.6, "mode": "add", "fmt": "%.1fx your trail", "name": "Wave width"},
+	"wave_cd": {"base": 10, "mode": "mul", "fmt": "%.1f s", "name": "Wave recharge"},
 	"av_width": {"base": 8, "mode": "add", "fmt": "%d m", "name": "Avalanche width"},
 	"av_cd": {"base": 20, "mode": "mul", "fmt": "%.1f s", "name": "Avalanche recharge"},
 	"vortex_mult": {"base": 2.0, "mode": "add", "fmt": "%.1fx", "name": "Vortex size"},
@@ -43,9 +43,9 @@ const STATS := {
 # Active skills, bought in the web and fired with a key.
 const SKILLS := {
 	"squall": {"name": "Squall", "key": "Left Mouse", "action": "skill_squall", "icon": "snowflake", "cd_stat": "squall_cd",
-		"desc": "A burst of snow rings out around you."},
+		"desc": "A burst of snow rings out around you, scaled to your size."},
 	"frost_wave": {"name": "Frost Wave", "key": "Right Mouse", "action": "skill_wave", "icon": "front", "cd_stat": "wave_cd",
-		"desc": "Send a rolling wave of frost across the land ahead of you."},
+		"desc": "Send a broad wave of frost rolling far across the land where you look; it scales with your size."},
 	"vortex_form": {"name": "Vortex Form", "key": "R", "action": "skill_vortex", "icon": "vortex", "cd_stat": "vortex_cd",
 		"desc": "Swell into a polar vortex for a few seconds, freezing a vast area."},
 }
@@ -68,14 +68,11 @@ const NODES := {
 		"desc": "That's you. Snow falls wherever you drift."},
 	# ----- Size (up)
 	"billow": {"branch": "size", "name": "Billow", "icon": "cloud", "pos": Vector2(0, -1.6), "links": ["heart"],
-		"max": 5, "cost": 12, "growth": 1.75, "stat": "radius", "per": 0.3,
+		"max": 5, "cost": 12, "growth": 1.75, "stat": "radius", "per": 0.45,
 		"desc": "A wider cloud blankets more ground."},
 	"yield_sky": {"branch": "size", "name": "Crisp Air", "icon": "crystal", "pos": Vector2(-1.15, -2.6), "links": ["swell"],
 		"max": 3, "cost": 32, "growth": 2.4, "stat": "frost_mult", "per": 0.12,
 		"desc": "Earn more Frost for every square metre you freeze."},
-	"dense_core": {"branch": "size", "name": "Dense Core", "icon": "snowflake", "pos": Vector2(1.15, -2.6), "links": ["billow"],
-		"max": 2, "cost": 60, "growth": 2.0, "stat": "rate", "per": 0.1,
-		"desc": "Your snow trail gets 10% wider for each level (the cloud itself stays the same size)."},
 	"swell": {"branch": "size", "name": "Swell", "icon": "cloud", "pos": Vector2(0, -3.1), "links": ["billow"],
 		"max": 5, "cost": 174, "growth": 1.85, "stat": "radius", "per": 0.45,
 		"desc": "Grow larger still."},
@@ -92,19 +89,16 @@ const NODES := {
 		"max": 3, "cost": 14000, "growth": 1.5, "stat": "radius", "per": 1.5, "coverage": 0.75,
 		"desc": "The biggest cloud the valley has ever seen."},
 	# ----- Snowfall (up-right)
-	"flurry": {"branch": "snow", "name": "Flurry", "icon": "snowflake", "pos": Vector2(1.4, -0.8), "links": ["heart"],
-		"max": 3, "cost": 15, "growth": 1.8, "stat": "rate", "per": 0.1,
-		"desc": "Your snow trail gets 10% wider for each level."},
-	"heavy_snow": {"branch": "snow", "name": "Heavy Snow", "icon": "snowflake", "pos": Vector2(2.7, -1.5), "links": ["flurry"],
-		"max": 2, "cost": 322, "growth": 2.4, "stat": "rate", "per": 0.1,
-		"desc": "Big drifting flakes: your snow trail gets 10% wider for each level."},
-	"deep_freeze": {"branch": "snow", "name": "Deep Freeze", "icon": "spark", "pos": Vector2(3.3, -2.8), "links": ["heavy_snow"],
-		"max": 1, "cost": 1457, "growth": 1.0, "kind": "keystone",
-		"desc": "KEYSTONE: drifting snow seals gaps up to 7 m wide between your passes."},
-	"blanket": {"branch": "snow", "name": "Blanket", "icon": "snowflake", "pos": Vector2(4.1, -1.3), "links": ["heavy_snow"],
-		"max": 2, "cost": 11662, "growth": 2.4, "stat": "rate", "per": 0.15,
-		"desc": "A broad blanket: your snow trail gets 15% wider for each level."},
-	"crystal": {"branch": "snow", "name": "Snow Crystals", "icon": "crystal", "pos": Vector2(4.8, -2.6), "links": ["blanket", "deep_freeze"],
+	"drift_snow": {"branch": "snow", "name": "Drifting Snow", "icon": "snowflake", "pos": Vector2(1.4, -0.8), "links": ["heart"],
+		"max": 2, "cost": 15, "growth": 2.2, "stat": "drift", "per": 2.0,
+		"desc": "Snow drifts into the strips you miss between passes: gaps up to 2 m wider seal themselves, per level."},
+	"spreading": {"branch": "snow", "name": "Spreading Frost", "icon": "crystal", "pos": Vector2(2.7, -1.5), "links": ["drift_snow"],
+		"max": 3, "cost": 260, "growth": 2.3, "stat": "spread", "per": 4.0,
+		"desc": "While you fly, frozen ground slowly creeps into the green ground next to it: +4 m² a second per level."},
+	"deep_freeze": {"branch": "snow", "name": "Deep Freeze", "icon": "spark", "pos": Vector2(3.3, -2.8), "links": ["spreading"],
+		"max": 1, "cost": 1457, "growth": 1.0, "kind": "keystone", "stat": "drift", "per": 4.0,
+		"desc": "KEYSTONE: deep drifts seal gaps 4 m wider still, so even sloppy passes leave nothing behind."},
+	"crystal": {"branch": "snow", "name": "Snow Crystals", "icon": "crystal", "pos": Vector2(4.4, -1.6), "links": ["spreading", "deep_freeze"],
 		"max": 3, "cost": 4422, "growth": 1.8, "stat": "frost_mult", "per": 0.15,
 		"desc": "Earn more Frost for every square metre you freeze."},
 	# ----- Wind (down-right)
@@ -116,14 +110,8 @@ const NODES := {
 		"desc": "Stronger winds carry you: +0.5 m/s for each level."},
 	"tailwind": {"branch": "wind", "name": "Tailwind", "icon": "spark", "pos": Vector2(3.3, 2.8), "links": ["gale"],
 		"max": 1, "cost": 1749, "growth": 1.0, "kind": "keystone",
-		"desc": "KEYSTONE: you fly 50% faster over ground that is already frozen, so getting to fresh green is quick."},
-	"snow_wake": {"branch": "wind", "name": "Snow Wake", "icon": "spark", "pos": Vector2(4.1, 1.3), "links": ["gale"],
-		"max": 1, "cost": 2429, "growth": 1.0, "kind": "keystone", "stat": "wake_life", "per": 3.0,
-		"desc": "KEYSTONE: little flurries linger where you have been, still snowing after you leave."},
-	"long_wake": {"branch": "wind", "name": "Long Wake", "icon": "wind", "pos": Vector2(5.3, 1.9), "links": ["snow_wake"],
-		"max": 3, "cost": 3885, "growth": 1.8, "stat": "wake_life", "per": 1.5,
-		"desc": "Your lingering flurries last longer."},
-	"jet_stream": {"branch": "wind", "name": "Jet Stream", "icon": "wind", "pos": Vector2(4.6, 3.3), "links": ["tailwind", "long_wake"],
+		"desc": "KEYSTONE: you fly 30% faster while your whole cloud is over frozen ground, so getting back to fresh green is quick. Half on, half off does not count."},
+	"jet_stream": {"branch": "wind", "name": "Jet Stream", "icon": "wind", "pos": Vector2(4.6, 3.3), "links": ["tailwind"],
 		"max": 3, "cost": 15795, "growth": 1.6, "stat": "speed", "per": 0.8, "coverage": 0.5,
 		"desc": "Ride the high winds: +0.8 m/s for each level."},
 	# ----- Cloudlets (down)
@@ -148,22 +136,22 @@ const NODES := {
 	# ----- Storm (down-left)
 	"squall": {"branch": "storm", "name": "Squall", "icon": "snowflake", "pos": Vector2(-1.4, 0.8), "links": ["heart"],
 		"max": 1, "cost": 30, "growth": 1.0, "kind": "skill",
-		"desc": "SKILL (Left Mouse): a burst of snow rings out around you."},
+		"desc": "SKILL (Left Mouse): a burst of snow rings out around you, 1.6x as far as your own snowfall reaches."},
 	"squall_size": {"branch": "storm", "name": "Wide Squall", "icon": "snowflake", "pos": Vector2(-2.8, 0.7), "links": ["squall"],
-		"max": 5, "cost": 121, "growth": 1.9, "stat": "squall_radius", "per": 1.5,
-		"desc": "Your squall reaches farther."},
+		"max": 5, "cost": 121, "growth": 1.9, "stat": "squall_radius", "per": 0.2,
+		"desc": "Your squall rings out farther: +0.25x your size per level."},
 	"squall_cd": {"branch": "storm", "name": "Quick Squall", "icon": "snowflake", "pos": Vector2(-2.4, 1.8), "links": ["squall_size"],
 		"max": 4, "cost": 162, "growth": 2.0, "stat": "squall_cd", "per": 0.88,
 		"desc": "Your squall recharges faster."},
 	"frost_wave": {"branch": "storm", "name": "Frost Wave", "icon": "front", "pos": Vector2(-3.7, 1.5), "links": ["squall_cd"],
 		"max": 1, "cost": 1165, "growth": 1.0, "kind": "skill",
-		"desc": "SKILL (Right Mouse): send a rolling wave of frost across the land ahead of you."},
+		"desc": "SKILL (Right Mouse): a wave of frost as wide as your trail rolls 40 m ahead of you. It grows as you do."},
 	"wave_length": {"branch": "storm", "name": "Long Wave", "icon": "front", "pos": Vector2(-5.0, 1.0), "links": ["frost_wave"],
-		"max": 4, "cost": 2429, "growth": 1.9, "stat": "wave_length", "per": 10,
-		"desc": "Waves roll farther."},
+		"max": 4, "cost": 2429, "growth": 1.9, "stat": "wave_length", "per": 12,
+		"desc": "Waves roll 15 m farther per level."},
 	"wave_width": {"branch": "storm", "name": "Broad Wave", "icon": "front", "pos": Vector2(-4.6, 2.6), "links": ["wave_length"],
-		"max": 4, "cost": 2429, "growth": 1.9, "stat": "wave_width", "per": 2,
-		"desc": "Waves sweep a wider strip."},
+		"max": 4, "cost": 2429, "growth": 1.9, "stat": "wave_width", "per": 0.15,
+		"desc": "Waves sweep a wider strip: +0.25x your trail width per level."},
 	"wave_cd": {"branch": "storm", "name": "Quick Wave", "icon": "front", "pos": Vector2(-3.6, 2.9), "links": ["wave_width"],
 		"max": 3, "cost": 2914, "growth": 1.9, "stat": "wave_cd", "per": 0.85,
 		"desc": "Your waves recharge faster."},
@@ -215,6 +203,24 @@ const NODES := {
 		"max": 1, "cost": 2948, "growth": 1.0, "kind": "keystone", "coverage": 0.75,
 		"desc": "Press Q to sense every remaining patch of green across the world."},
 }
+
+# Nodes removed in later versions: [cost, growth]. Old saves get the Frost
+# they spent on them back.
+const RETIRED_NODES := {
+	"dense_core": [60, 2.0], "flurry": [15, 1.8], "heavy_snow": [322, 2.4], "blanket": [11662, 2.4],
+	"snow_wake": [2429, 1.0], "long_wake": [3885, 1.8],
+}
+
+
+static func retired_refund(id: String, level: int) -> float:
+	if not RETIRED_NODES.has(id):
+		return 0.0
+	var c: Array = RETIRED_NODES[id]
+	var total := 0.0
+	for k in level:
+		total += ceil(float(c[0]) * pow(float(c[1]), k))
+	return total
+
 
 # ------------------------------------------------------------ world & economy
 const WORLD_SIZE := 512           # metres along one side, 1 coverage cell per metre

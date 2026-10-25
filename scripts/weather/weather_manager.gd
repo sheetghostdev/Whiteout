@@ -31,6 +31,7 @@ var _uid := 1
 var _pending_frost := 0.0
 var _rate_window := 0.0
 var _rate_accum := 0.0
+var _spread_acc := 0.0
 
 
 func setup(p_terrain: TerrainData, p_cov: SnowCoverage, p_prog: Progression, p_visuals: bool, p_seed: int) -> void:
@@ -53,6 +54,7 @@ func spawn_player_cloud(at: Vector2) -> PlayerCloud:
 		cloud.queue_free()
 	var c := PlayerCloud.new()
 	c.pos = at
+	c.radius = prog.stat("radius")
 	spawn(c)
 	cloud = c
 	return c
@@ -105,14 +107,22 @@ func _step() -> void:
 				e.queue_free()
 		i -= 1
 	if tick % 15 == 0:
-		# Snow drifts into small gaps where you have been snowing; Deep
-		# Freeze lets it bridge much wider gaps.
-		cov.gap_reach = 4 if prog.has("deep_freeze") else 2
+		# Snow drifts into small gaps where you have been snowing. The
+		# "drift" stat is the widest gap (in metres) that seals by itself.
+		cov.gap_reach = int((prog.stat("drift") + 1.0) * 0.5)
 		_add_frost_raw(cov.drift_fill(12))
 		# Ice creeps across water from frozen spots - only while you are
 		# flying, so a resting cloud earns nothing.
 		if cloud != null and cloud.is_active():
 			_add_frost_raw(cov.water_spread_tick(0.5, prog.stat("ice_creep")))
+			# Spreading Frost: frozen land creeps into the green beside it.
+			_spread_acc += prog.stat("spread") * 0.5
+			if _spread_acc >= 1.0:
+				var n := int(_spread_acc)
+				_spread_acc -= n
+				var before := cov.total_incomplete
+				_add_frost_raw(cov.spread_tick(n))
+				area_by_source["spreading"] = float(area_by_source.get("spreading", 0.0)) + float(before - cov.total_incomplete)
 
 
 # --------------------------------------------------------------- skills
@@ -137,13 +147,13 @@ func use_skill(id: String, aim: Vector2) -> String:
 			if count_kind("frost_pulse") >= GameBalance.MAX_PULSES:
 				return "Too much weather"
 			var p := FrostPulse.new()
-			p.setup(cloud.pos, prog.stat("squall_radius") + cloud.radius, 1.0, "squall")
+			p.setup(cloud.pos, prog.stat("squall_radius") * cloud.snow_width(), 1.0, "squall")
 			spawn(p, -1, "squall")
 		"frost_wave":
 			if not can_spawn("frost_front"):
 				return "Too much weather"
 			var f := FrostFront.new()
-			f.configure(prog.stat("wave_width"), prog.stat("wave_length"), prog.has("splinter"))
+			f.configure(prog.stat("wave_width") * cloud.snow_width() * 2.0, prog.stat("wave_length"), prog.has("splinter"))
 			f.dir = aim
 			f.pos = cloud.pos + aim * cloud.radius * 0.5
 			spawn(f, -1, "frost_wave")
