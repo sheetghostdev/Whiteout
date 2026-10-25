@@ -245,8 +245,9 @@ func _build_water() -> void:
 				hi = maxf(hi, level[k])
 			if not wet or lo < -100.0:
 				continue
-			# Where the river reaches the sea, the sea itself is the surface.
-			if hi <= TerrainData.SEA_LEVEL + 0.15:
+			# At sea level only the river itself gets a surface (the sea has its
+			# own); beach cells touching the sea are left to the sea.
+			if hi <= TerrainData.SEA_LEVEL + 0.15 and not _near_river_water(ci, cj):
 				continue
 			var ids := []
 			for k in corners:
@@ -254,8 +255,16 @@ func _build_water() -> void:
 					var vi: int = k % V
 					var vj: int = k / V
 					var f := terrain.flow[k]
-					vmap[k] = mb.add_vertex(Vector3(-H + vi, level[k] + 0.02, -H + vj), Vector3.UP,
-						Color(f.x * 0.25 + 0.5, f.y * 0.25 + 0.5, 0.0, 1.0))
+					# At sea level (the river mouth) sit a little higher so the
+					# sea's waves never poke through the river surface.
+					var lift := 0.02 if level[k] > TerrainData.SEA_LEVEL + 0.3 else 0.1
+					# Blue channel: fades the river out over its last metre or two
+					# into the sea, so it ends softly along the coastline.
+					var fade := 1.0
+					if level[k] < TerrainData.SEA_LEVEL + 0.3:
+						fade = clampf((terrain.coast_at(-H + vi, -H + vj) - TerrainData.MOUTH_END - 1.5) / 3.5, 0.0, 1.0)
+					vmap[k] = mb.add_vertex(Vector3(-H + vi, level[k] + lift, -H + vj), Vector3.UP,
+						Color(f.x * 0.25 + 0.5, f.y * 0.25 + 0.5, fade, 1.0))
 				ids.append(vmap[k])
 			mb.add_tri_idx(ids[0], ids[1], ids[2])
 			mb.add_tri_idx(ids[1], ids[3], ids[2])
@@ -265,6 +274,21 @@ func _build_water() -> void:
 	mi.material_override = water_material
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
+
+
+## True for river cells and the cells right beside them (where the river
+## surface dips under its banks).
+func _near_river_water(ci: int, cj: int) -> bool:
+	var N := TerrainData.N
+	for oj in range(-1, 2):
+		for oi in range(-1, 2):
+			var x := ci + oi
+			var z := cj + oj
+			if x < 0 or z < 0 or x >= N or z >= N:
+				continue
+			if terrain.cell_water[z * N + x] == 1:
+				return true
+	return false
 
 
 ## The sea: a wide disc of rings around the island out to the horizon.

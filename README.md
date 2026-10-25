@@ -183,7 +183,7 @@ The balancing bot (`scripts/tests/balance_bot.gd`) plays the real
 simulation: it flies the cloud to the nearest green ground, drifts slowly
 over it in passes, fires skills when they would hit green ground, and shops by strategy (cheapest first, spread across
 branches, random, saving up, skills last). With the current tuning every
-strategy completes the island in about 10½–13 bot-minutes. The first
+strategy completes the island in about 10½–12½ bot-minutes. The first
 purchase lands within seconds, and there is never much more than a minute
 without an affordable upgrade. About two thirds of the web gets bought, with
 about 5 open choices on average (9 at most), and the cloud ends at roughly a

@@ -15,6 +15,7 @@ const HALF := GameBalance.WORLD_HALF
 const SEA_LEVEL := 0.0
 const LAKE_LEVEL := 5.0
 const LAKE_CENTER := Vector2(135.0, -5.0)
+const MOUTH_END := -6.0                  # coast distance where the river gives way to the sea
 const LAKE_REACH := 64.0                 # lake_distance where the basin rim stands
 const SPAWN := Vector2(3.0, 84.0)
 const TRAILHEAD := Vector2(0.0, 66.0)
@@ -282,6 +283,14 @@ func _build_rivers() -> void:
 		for _pass in (24 if d["start"] < 0.0 else 6):
 			for k in range(1, n - 1):
 				wl[k] = minf(wl[k - 1], (wl[k - 1] + wl[k] + wl[k + 1]) / 3.0)
+		# Down to the waterline (which lies a few metres outside the island's
+		# outline, where the beach shelves under the sea) the river stays a
+		# little above the sea and eases down to it, with its bed above the
+		# sea surface so the sea never shows through it.
+		for k in n:
+			var cdk := coast_distance(line[k].x, line[k].y)
+			if d["start"] >= 0.0 and cdk > MOUTH_END:
+				wl[k] = maxf(wl[k], SEA_LEVEL + lerpf(0.05, 0.25, _smooth(-5.0, -1.0, cdk)))
 		var pts3 := PackedVector3Array()
 		pts3.resize(n)
 		for k in n:
@@ -346,6 +355,11 @@ func _carve_river(pts: PackedVector3Array, widths: PackedFloat32Array) -> void:
 			# Inland channels stay above the sea floor so no sea shows through.
 			if w > 1.0:
 				target = maxf(target, 0.15)
+			else:
+				# Near the waterline the bed rises gently to just above the sea,
+				# so the sea never shows through the river and the channel slips
+				# under the sea smoothly.
+				target = lerpf(target, maxf(target, SEA_LEVEL + 0.02), _smooth(MOUTH_END, -2.0, coast_at(vx, vz)))
 			h = minf(h, target)
 			water_level[idx] = maxf(water_level[idx], w)
 		else:
@@ -483,7 +497,11 @@ func _classify_cells() -> void:
 				r = REGION_LAKE
 			cell_region[idx] = r
 			var wl := sample_water_level(x, z)
-			var sea := h < SEA_LEVEL + 0.05 and coast_at(x, z) < 30.0 and wl <= SEA_LEVEL + 0.01
+			var cd := coast_at(x, z)
+			# The river's last stretch, inside the coastline, is river (it
+			# freezes like the rest of it), not sea.
+			var river_mouth := cd > MOUTH_END and river_dist[cj * V + ci] < 9.0 and wl > -100.0
+			var sea := h < SEA_LEVEL + 0.05 and cd < 30.0 and wl <= SEA_LEVEL + 0.01 and not river_mouth
 			var built := 0
 			if settlements.building_at(Vector2(x, z), 3.0):
 				built = 1
@@ -491,7 +509,7 @@ func _classify_cells() -> void:
 				built = 2
 			cell_built[idx] = built
 			cell_ocean[idx] = 1 if sea else 0
-			cell_water[idx] = 1 if wl > -100.0 and h < wl - 0.05 and not sea else 0
+			cell_water[idx] = 1 if (wl > -100.0 and h < wl - 0.05 and not sea) or river_mouth else 0
 
 
 ## Rooftops as gentle hills for the cloud: each building's top height falls

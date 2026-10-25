@@ -729,16 +729,42 @@ func update_texture() -> bool:
 		chunk_dirty[ch] = 0
 		var bx := (ch % CH) * CS
 		var bz := (ch / CH) * CS
-		for z in range(bz, bz + CS):
+		# Include a 2-cell border: sea texels there borrow from this chunk.
+		for z in range(maxi(bz - 2, 0), mini(bz + CS + 2, N)):
 			var row := z * N
-			for x in range(bx, bx + CS):
-				# Sea cells read as frozen for the ground shaders, so snow reaches
-				# right to the waterline; the sea's own shader never freezes.
-				tex_bytes[row + x] = 255 if void_cells[row + x] == 1 else int(cov[row + x] * 255.0)
+			var inside_z := z >= bz and z < bz + CS
+			for x in range(maxi(bx - 2, 0), mini(bx + CS + 2, N)):
+				var i := row + x
+				if void_cells[i] == 1:
+					tex_bytes[i] = _sea_texel(x, z)
+				elif inside_z and x >= bx and x < bx + CS:
+					tex_bytes[i] = int(cov[i] * 255.0)
 	any_dirty = false
 	image.set_data(N, N, false, Image.FORMAT_R8, tex_bytes)
 	texture.update(image)
 	return true
+
+
+## Sea cells never freeze, but the ground shaders blend neighbouring texels,
+## so a sea texel takes the average coverage of the land within 2 cells:
+## frozen beaches stay white right to the waterline, green beaches stay
+## free of snow at the waterline.
+func _sea_texel(x: int, z: int) -> int:
+	var sum := 0.0
+	var n := 0
+	for oz in range(-2, 3):
+		var nz := z + oz
+		if nz < 0 or nz >= N:
+			continue
+		for ox in range(-2, 3):
+			var nx := x + ox
+			if nx < 0 or nx >= N:
+				continue
+			var j := nz * N + nx
+			if void_cells[j] == 0:
+				sum += cov[j]
+				n += 1
+	return int(sum / n * 255.0) if n > 0 else 0
 
 
 # --------------------------------------------------------------- persistence

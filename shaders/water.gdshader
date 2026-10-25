@@ -13,15 +13,20 @@ uniform bool open_sea = false;
 
 varying vec3 wpos;
 varying vec2 vflow;
+varying float vfade;
 
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	vflow = (COLOR.rg - 0.5) * 4.0;
+	vfade = open_sea ? 1.0 : COLOR.b;
 	float c = open_sea ? 0.0 : wo_cov(wpos.xz);
 	float calm = 1.0 - smoothstep(0.2, 0.9, c);
 	float wave = sin(wpos.x * 0.35 + TIME * 1.1) * cos(wpos.z * 0.28 + TIME * 0.8);
 	if (open_sea) {
 		wave = wave * 2.5 + sin(wpos.x * 0.07 - TIME * 0.6) * cos(wpos.z * 0.05 + TIME * 0.45) * 3.0;
+		// The swell dies away in shallow water, so the sea lies flat where it
+		// meets beaches and the river mouth instead of poking up through them.
+		calm *= smoothstep(-1.5, -6.0, wo_terrain_height(wpos.xz));
 	}
 	VERTEX.y += wave * 0.035 * calm;
 }
@@ -85,7 +90,8 @@ void fragment() {
 
 	vec3 col = mix(water, icec, ice);
 	ALBEDO = col;
-	ALPHA = mix(water_alpha, 1.0, ice);
+	// River water and ice fade out where the river meets the sea.
+	ALPHA = mix(water_alpha, 1.0, ice) * smoothstep(0.0, 1.0, vfade);
 	ROUGHNESS = mix(0.06, mix(0.18, 0.75, dust), ice);
 	SPECULAR = mix(0.6, 0.45, ice);
 	NORMAL = normalize(mix((VIEW_MATRIX * vec4(wn, 0.0)).xyz, NORMAL, ice));

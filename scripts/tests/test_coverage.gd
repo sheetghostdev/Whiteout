@@ -204,7 +204,19 @@ func run(t, _full: bool) -> void:
 	tx.update_texture()
 	t.check(tx.tex_bytes[tx.cell_index(10, 10)] == 255, "texture byte matches frozen cell")
 	t.check(not tx.any_dirty, "upload clears dirty flags")
-	t.check(tx.tex_bytes[tx.cell_index(250, 250)] == 255, "ground shaders see the sea as done, so snow reaches the waterline")
+	# Sea texels follow the land beside them: no snow at a green waterline,
+	# snow right to the water once the beach is frozen.
+	var shore := Vector2.INF
+	for k in 256:
+		if tx.is_void(tx.cell_index(-40.0, 0.5 + k)):
+			shore = Vector2(-40.0, 0.5 + k + 1.0)
+			break
+	t.check(shore != Vector2.INF, "test world has a shore south of the meadows")
+	t.check(tx.tex_bytes[tx.cell_index(shore.x, shore.y)] == 0, "a green beach shows no snow at the waterline")
+	tx.apply_disc(shore.x, shore.y - 4.0, 6.0, 1.0)
+	tx.update_texture()
+	t.check(tx.tex_bytes[tx.cell_index(shore.x, shore.y)] > 200, "a frozen beach is snowy right to the waterline")
+	t.check(tx.tex_bytes[tx.cell_index(250, 250)] == 0, "the open sea itself reads as no snow")
 
 
 func _consistency(t, cov: SnowCoverage, label: String) -> void:
