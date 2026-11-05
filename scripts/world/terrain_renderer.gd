@@ -296,7 +296,7 @@ func _build_sea() -> void:
 	var mb := MeshBuilder.new()
 	var radii: Array[float] = []
 	var r := 0.0
-	while r < 3600.0:
+	while r < 4200.0:
 		radii.append(r)
 		r += clampf(r * 0.08, 6.0, 160.0)
 	var seg := 160
@@ -333,8 +333,8 @@ func _build_backdrop() -> void:
 	noise.frequency = 0.004
 	noise.fractal_octaves = 4
 	var islands := [
-		[Vector2(-300, -1250), 380.0, 190.0], [Vector2(700, -950), 260.0, 110.0], [Vector2(-1150, -500), 300.0, 140.0],
-		[Vector2(1250, 250), 220.0, 70.0], [Vector2(-1000, 800), 200.0, 55.0], [Vector2(450, 1200), 260.0, 80.0],
+		[Vector2(-450, -1700), 420.0, 210.0], [Vector2(1000, -1350), 300.0, 120.0], [Vector2(-1600, -700), 340.0, 150.0],
+		[Vector2(1700, 350), 240.0, 75.0], [Vector2(-1400, 1100), 220.0, 60.0], [Vector2(650, 1650), 280.0, 85.0],
 	]
 	var spacing := 24.0
 	var mb := MeshBuilder.new()

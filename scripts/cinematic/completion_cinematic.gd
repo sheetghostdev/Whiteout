@@ -18,7 +18,7 @@ var _running := false
 func start(from: Transform3D, terrain: TerrainData) -> void:
 	cam = Camera3D.new()
 	cam.fov = 70.0
-	cam.far = 3200.0
+	cam.far = 4000.0
 	add_child(cam)
 	var f := from.origin
 	var fwd := -from.basis.z

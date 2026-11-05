@@ -15,8 +15,8 @@ func run(t, _full: bool) -> void:
 		if cov.is_void(i):
 			sea += 1
 	t.check(sea > 20000 and cov.total_cells + sea == SnowCoverage.N * SnowCoverage.N, "the sea around the island is not part of the land (%d sea cells)" % sea)
-	t.check(terrain.is_ocean(250, 250) and terrain.is_ocean(-250, 0) and not terrain.is_ocean(0, 60), "the world edge is open sea, the middle is land")
-	var sea_gain := cov.apply_disc(0, 250, 6.0, 1.0)
+	t.check(terrain.is_ocean(370, 370) and terrain.is_ocean(-375, 0) and not terrain.is_ocean(0, 60), "the world edge is open sea, the middle is land")
+	var sea_gain := cov.apply_disc(0, 372, 6.0, 1.0)
 	t.check(sea_gain == 0.0 and cov.last_cov_delta == 0.0, "snow on the open sea pays nothing")
 
 	# Gradual accumulation, never instant.
@@ -176,7 +176,7 @@ func run(t, _full: bool) -> void:
 	for k in w.water_cells:
 		var x := k % SnowCoverage.N
 		var z := k / SnowCoverage.N
-		if w.water[k - 1] == 1 and w.water[k + 1] == 1 and absf(x - 256 - TerrainData.LAKE_CENTER.x) < 10 and absf(z - 256 - TerrainData.LAKE_CENTER.y) < 10:
+		if w.water[k - 1] == 1 and w.water[k + 1] == 1 and absf(x - TerrainData.HALF - TerrainData.LAKE_CENTER.x) < 10 and absf(z - TerrainData.HALF - TerrainData.LAKE_CENTER.y) < 10:
 			lake_idx = k
 			break
 	t.check(lake_idx >= 0, "found a lake cell")
@@ -207,7 +207,7 @@ func run(t, _full: bool) -> void:
 	# Sea texels follow the land beside them: no snow at a green waterline,
 	# snow right to the water once the beach is frozen.
 	var shore := Vector2.INF
-	for k in 256:
+	for k in 380:
 		if tx.is_void(tx.cell_index(-40.0, 0.5 + k)):
 			shore = Vector2(-40.0, 0.5 + k + 1.0)
 			break

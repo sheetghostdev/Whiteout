@@ -73,7 +73,7 @@ func build_relief(terrain: TerrainData, colors: PackedColorArray) -> void:
 				var depth := clampf(-terrain.heights[idx] / 12.0, 0.0, 1.0)
 				c = Color(0.36, 0.68, 0.80).lerp(Color(0.16, 0.38, 0.62), depth)
 				shade = 1.0
-			elif terrain.cell_built[j * n + i] == 1 and terrain.settlements.building_at(Vector2(i - 256.0 + 0.5, j - 256.0 + 0.5), 0.0):
+			elif terrain.cell_built[j * n + i] == 1 and terrain.settlements.building_at(Vector2(i - TerrainData.HALF + 0.5, j - TerrainData.HALF + 0.5), 0.0):
 				c = Color(0.55, 0.30, 0.24)
 				shade = 1.0
 			# Alpha 0 marks the sea, which the map never paints white.
@@ -117,7 +117,7 @@ func _process(_delta: float) -> void:
 
 
 func _w2m(p: Vector2) -> Vector2:
-	return (p + Vector2(256, 256)) / 512.0 * MAP_SIZE
+	return (p + Vector2(TerrainData.HALF, TerrainData.HALF)) / float(TerrainData.N) * MAP_SIZE
 
 
 func _draw_overlay() -> void:
@@ -126,7 +126,7 @@ func _draw_overlay() -> void:
 	for e in Game.weather.effects:
 		if not e.alive or e.kind == "frost_pulse":
 			continue
-		var r := maxf(e.radius / 512.0 * MAP_SIZE, 3.0)
+		var r := maxf(e.radius / float(TerrainData.N) * MAP_SIZE, 3.0)
 		_overlay.draw_arc(_w2m(e.pos), r, 0, TAU, 24, Color(0.5, 0.75, 1.0, 0.9), 2.0, true)
 	# Late game: point out the largest unfrozen patches.
 	var cov := Game.coverage()

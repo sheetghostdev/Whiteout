@@ -8,7 +8,8 @@ global uniform float wo_completion;
 global uniform vec4 wo_thaw;      // xy = centre (x, z), z = pulse radius, w = strength
 global uniform vec2 wo_wind;
 
-const float WO_HALF = 256.0;
+const float WO_HALF = 384.0;
+const float WO_SIZE = 768.0;
 
 // Palette values in this project are authored in sRGB; albedo wants linear.
 vec3 wo_lin(vec3 c) {
@@ -16,11 +17,11 @@ vec3 wo_lin(vec3 c) {
 }
 
 float wo_terrain_height(vec2 xz) {
-	return textureLod(wo_height, (xz + WO_HALF + 0.5) / 513.0, 0.0).r;
+	return textureLod(wo_height, (xz + WO_HALF + 0.5) / (WO_SIZE + 1.0), 0.0).r;
 }
 
 float wo_water_level(vec2 xz) {
-	return textureLod(wo_water, (xz + WO_HALF + 0.5) / 513.0, 0.0).r;
+	return textureLod(wo_water, (xz + WO_HALF + 0.5) / (WO_SIZE + 1.0), 0.0).r;
 }
 
 float wo_surface_height(vec2 xz) {
@@ -28,7 +29,7 @@ float wo_surface_height(vec2 xz) {
 }
 
 float wo_cov(vec2 xz) {
-	return textureLod(wo_coverage, (xz + WO_HALF) / 512.0, 0.0).r;
+	return textureLod(wo_coverage, (xz + WO_HALF) / WO_SIZE, 0.0).r;
 }
 
 // Integer lattice hash (pcg2d). Pure integer arithmetic gives bit-identical
@@ -109,10 +110,10 @@ float wo_cov_smooth(vec2 xz) {
 	vec2 g1 = w2 + w3;
 	vec2 h0 = (w1 / g0) - 1.0 + i + 0.5;
 	vec2 h1 = (w3 / g1) + 1.0 + i + 0.5;
-	float a = textureLod(wo_coverage, vec2(h0.x, h0.y) / 512.0, 0.0).r;
-	float b = textureLod(wo_coverage, vec2(h1.x, h0.y) / 512.0, 0.0).r;
-	float c = textureLod(wo_coverage, vec2(h0.x, h1.y) / 512.0, 0.0).r;
-	float d = textureLod(wo_coverage, vec2(h1.x, h1.y) / 512.0, 0.0).r;
+	float a = textureLod(wo_coverage, vec2(h0.x, h0.y) / WO_SIZE, 0.0).r;
+	float b = textureLod(wo_coverage, vec2(h1.x, h0.y) / WO_SIZE, 0.0).r;
+	float c = textureLod(wo_coverage, vec2(h0.x, h1.y) / WO_SIZE, 0.0).r;
+	float d = textureLod(wo_coverage, vec2(h1.x, h1.y) / WO_SIZE, 0.0).r;
 	return g0.y * (g0.x * a + g1.x * b) + g1.y * (g0.x * c + g1.x * d);
 }
 

@@ -24,7 +24,7 @@ func setup(t: TerrainData, w: WeatherManager) -> void:
 	weather = w
 	camera = Camera3D.new()
 	camera.near = 0.2
-	camera.far = 3200.0
+	camera.far = 4000.0
 	camera.fov = Settings.fov
 	camera.top_level = true
 	add_child(camera)

@@ -37,6 +37,10 @@ func _ready() -> void:
 			await _round4()
 		"edge":
 			await _edge()
+		"towns":
+			await _towns()
+		"townswinter":
+			await _towns_winter()
 		"edgecloudlets":
 			for id in ["billow", "cloudlet", "more_cloudlets"]:
 				Game.prog.levels[id] = 2 if id != "cloudlet" else 1
@@ -128,8 +132,8 @@ func _late() -> void:
 	var cov := Game.world.coverage
 	# Freeze almost everything, leaving a few green patches for contrast.
 	var keep := [Vector2(10, 90), Vector2(-150, 40), Vector2(140, 10), Vector2(-60, -170)]
-	for z in range(-256, 257, 6):
-		for x in range(-256, 257, 6):
+	for z in range(-384, 385, 6):
+		for x in range(-384, 385, 6):
 			var near := false
 			for k in keep:
 				if Vector2(x, z).distance_to(k) < 26.0:
@@ -372,7 +376,7 @@ func _round3() -> void:
 	cov.apply_disc(-140, -20, 6.0, -1.0)
 	for z in range(-30, -10):
 		for x in range(-150, -130):
-			cov.cov[(z + 256) * SnowCoverage.N + x + 256] = 0.0
+			cov.cov[(z + 384) * SnowCoverage.N + x + 384] = 0.0
 	cov.deserialize(cov.serialize())
 	cov.update_texture()
 	Game.prog.world_fraction = cov.world_completion()
@@ -461,3 +465,65 @@ func _edge() -> void:
 	await _sleep(0.7)
 	await _shot("93_edge_flying2")
 	_cloud().move_input = Vector2.ZERO
+
+
+## Looks at `target` from the direction of `from_dir` (flat), `dist` metres
+## back, with the cloud hidden so it never blocks the view.
+func _vista(target: Vector2, from_dir: Vector2, dist: float, pitch: float, shot: String, wait: float = 1.5) -> void:
+	var c := _cloud()
+	c.pos = target
+	c.vel = Vector2.ZERO
+	c.visible = false
+	var d := -from_dir.normalized()
+	var p: CloudController = Game.player
+	p.yaw = atan2(-d.x, -d.y)
+	p.pitch = deg_to_rad(pitch)
+	p.zoom = dist / (14.0 + c.radius * 2.6)
+	await _sleep(wait)
+	await _shot(shot)
+
+
+func _towns() -> void:
+	Game.start_new_game()
+	await _frames(10)
+	var sq := SettlementPlan.SQUARE
+	await _vista(sq, Vector2(0.6, 1.0), 45.0, -26, "a1_square", 3.0)
+	await _vista(sq + Vector2(10, -10), Vector2(-0.4, 1.0), 120.0, -32, "a2_hearthwick")
+	await _vista(TerrainData.POND_CENTER, Vector2(-0.8, 0.6), 50.0, -28, "a3_pond")
+	await _vista(Vector2(100, -42), Vector2(-1.0, -0.3), 60.0, -24, "a4_mere_end")
+	await _vista(Vector2(214, 228), Vector2(-0.7, -0.6), 90.0, -28, "a5_saltmouth")
+	var lh: Vector2 = Game.world.terrain.settlements.lighthouse
+	await _vista(lh, Vector2(-0.9, 0.4), 55.0, -18, "a6_lighthouse")
+	await _vista(Vector2(-150, 210), Vector2(0.9, 0.5), 120.0, -26, "a7_brookfield")
+	await _vista(TerrainData.HILLS[1][0], Vector2(0.5, 1.0), 40.0, -14, "a8_windmill")
+	await _vista(Vector2(-226, 30), Vector2(0.8, 0.6), 50.0, -30, "a9_fernhollow")
+	await _vista(Vector2(-150, -150), Vector2(0.3, 1.0), 60.0, -22, "b1_high_fold")
+	await _vista(Vector2(0, -200), Vector2(0.0, 1.0), 260.0, -22, "b2_mountains")
+	await _vista(Vector2(0, 20), Vector2(0.2, 1.0), 620.0, -48, "b3_island", 3.0)
+
+
+## Each town at first snow (people hurrying home), then deep in winter.
+func _towns_winter() -> void:
+	Game.start_new_game()
+	await _frames(10)
+	var sq := SettlementPlan.SQUARE
+	var vil: Villagers = Game.world.settlements.villagers
+	await _vista(sq, Vector2(0.6, 1.0), 40.0, -22, "c0_square_summer", 4.0)
+	var cov := Game.world.coverage
+	for k in 3:
+		cov.apply_disc(0, 0, 600.0, 1.0)
+	cov.update_texture()
+	await _sleep(2.0)
+	await _vista(sq, Vector2(0.6, 1.0), 40.0, -22, "c0b_first_snow", 2.0)
+	# Deep winter: everything frozen and every town long snowed in.
+	for t in SettlementPlan.TOWNS.size():
+		vil._winter[t] = 200.0
+		vil._snow_frac[t] = 1.0
+	for p in vil.people:
+		p.act_t = 0.0
+	await _sleep(25.0)
+	print("census ", vil.census(), " snowmen ", vil.snowmen_built(), " fires ", Game.world.settlements.fires_lit())
+	await _vista(sq, Vector2(0.6, 1.0), 45.0, -22, "c1_square_winter", 3.0)
+	await _vista(sq + Vector2(10, -10), Vector2(-0.4, 1.0), 120.0, -30, "c2_hearthwick_winter")
+	await _vista(Vector2(214, 228), Vector2(-0.7, -0.6), 90.0, -24, "c3_saltmouth_winter")
+	await _vista(Vector2(-226, 30), Vector2(0.8, 0.6), 40.0, -24, "c4_fernhollow_winter")

@@ -13,7 +13,7 @@ const HALF := GameBalance.WORLD_HALF
 const CS := GameBalance.CHUNK
 const CH := N / CS
 const FULL_SNAP := 0.995
-const REGION_COUNT := 4
+const REGION_COUNT := 5
 
 var cov := PackedFloat32Array()
 var reward := PackedFloat32Array()

@@ -223,16 +223,16 @@ static func retired_refund(id: String, level: int) -> float:
 
 
 # ------------------------------------------------------------ world & economy
-const WORLD_SIZE := 512           # metres along one side, 1 coverage cell per metre
-const WORLD_HALF := 256.0
+const WORLD_SIZE := 768           # metres along one side, 1 coverage cell per metre
+const WORLD_HALF := 384.0
 const CHUNK := 16                 # coverage chunk size in cells
 
-const REGION_NAMES: Array[String] = ["Central Meadows", "Woodland", "Lake District", "Highlands"]
-const REGION_SHORT: Array[String] = ["THE MEADOWS", "THE WOODLAND", "THE LAKE DISTRICT", "THE HIGHLANDS"]
-const REGION_REWARD: Array[float] = [1.0, 1.25, 1.5, 1.6]
+const REGION_NAMES: Array[String] = ["Central Meadows", "Woodland", "Lake District", "Highlands", "Saltmouth Coast"]
+const REGION_SHORT: Array[String] = ["THE MEADOWS", "THE WOODLAND", "THE LAKE DISTRICT", "THE HIGHLANDS", "SALTMOUTH COAST"]
+const REGION_REWARD: Array[float] = [1.0, 1.25, 1.5, 1.6, 1.4]
 const WATER_REWARD := 1.8
 # One pass freezes any ground completely (no half-done ground to hunt for).
-const REGION_EXPOSURE: Array[float] = [1.0, 1.0, 1.0, 1.0]
+const REGION_EXPOSURE: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0]
 const WATER_EXPOSURE := 1.0
 const FIELD_REWARD := 1.5          # frozen crops are worth extra
 const REGION_MILESTONES: Array[int] = [25, 50, 75, 100]

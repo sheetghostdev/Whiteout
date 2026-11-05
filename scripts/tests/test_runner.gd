@@ -41,6 +41,7 @@ func _ready() -> void:
 		["coverage", TestCoverage.new()],
 		["economy", TestEconomy.new()],
 		["cloud", TestCloud.new()],
+		["villagers", TestVillagers.new()],
 		["save_load", TestSaveLoad.new()],
 		["performance", TestPerformance.new()],
 		["assets", TestNoAssets.new()],

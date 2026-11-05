@@ -101,10 +101,15 @@ func _tree_density(x: float, z: float) -> float:
 			d = 0.0012 + 0.024 * smoothstep(0.66, 0.78, gr)
 		TerrainData.REGION_LAKE:
 			d = 0.003 + 0.02 * smoothstep(0.62, 0.76, gr)
+		TerrainData.REGION_COAST:
+			d = 0.0015 + 0.016 * smoothstep(0.64, 0.78, gr)
 		TerrainData.REGION_HIGHLANDS:
 			d = (0.004 + 0.022 * smoothstep(0.45, 0.7, cl)) * (1.0 - smoothstep(42.0, 72.0, h))
-	# Keep the spawn meadow open.
+	# Keep the spawn meadow and the towns' clearings open.
 	d *= smoothstep(16.0, 34.0, Vector2(x, z).distance_to(TerrainData.SPAWN))
+	for c in terrain.settlements.clearings:
+		var r: float = c[1]
+		d *= smoothstep(r * 0.55, r, Vector2(x, z).distance_to(c[0]))
 	return d
 
 
@@ -117,6 +122,8 @@ func _choose_kind(region: int, h: float) -> int:
 			return Kind.BROADLEAF if r < 0.6 else Kind.SMALL
 		TerrainData.REGION_LAKE:
 			return Kind.BROADLEAF if r < 0.45 else (Kind.SMALL if r < 0.75 else Kind.PINE)
+		TerrainData.REGION_COAST:
+			return Kind.PINE if r < 0.55 else (Kind.SMALL if r < 0.8 else Kind.BROADLEAF)
 	return Kind.PINE if r < 0.9 or h > 35.0 else Kind.SMALL
 
 
@@ -125,12 +132,12 @@ func place_all() -> void:
 	rocks.clear()
 	stumps.clear()
 	var cell := 4.0
-	var count := int(512.0 / cell)
+	var count := int(float(TerrainData.N) / cell)
 	var bushes: Array = []
 	for j in count:
 		for i in count:
-			var x := -256.0 + (i + _rng.randf()) * cell
-			var z := -256.0 + (j + _rng.randf()) * cell
+			var x := -TerrainData.HALF + (i + _rng.randf()) * cell
+			var z := -TerrainData.HALF + (j + _rng.randf()) * cell
 			if _blocked(x, z, 1.0):
 				continue
 			var region := terrain.region_at(x, z)
@@ -184,12 +191,12 @@ func _xform(pos: Vector3, rot: float, sc: float, origin: Vector3) -> Transform3D
 
 
 func build_trees() -> void:
-	var chunks := int(512.0 / TREE_CHUNK)
+	var chunks := int(float(TerrainData.N) / TREE_CHUNK)
 	var buckets := {}
 	for t in trees:
 		var p: Vector3 = t["pos"]
-		var ci := clampi(int((p.x + 256.0) / TREE_CHUNK), 0, chunks - 1)
-		var cj := clampi(int((p.z + 256.0) / TREE_CHUNK), 0, chunks - 1)
+		var ci := clampi(int((p.x + TerrainData.HALF) / TREE_CHUNK), 0, chunks - 1)
+		var cj := clampi(int((p.z + TerrainData.HALF) / TREE_CHUNK), 0, chunks - 1)
 		var key := cj * chunks + ci
 		if not buckets.has(key):
 			buckets[key] = []
@@ -202,7 +209,7 @@ func build_trees() -> void:
 		var list: Array = buckets[key]
 		var ci: int = key % chunks
 		var cj: int = key / chunks
-		var origin := Vector3(-256.0 + (ci + 0.5) * TREE_CHUNK, 0.0, -256.0 + (cj + 0.5) * TREE_CHUNK)
+		var origin := Vector3(-TerrainData.HALF + (ci + 0.5) * TREE_CHUNK, 0.0, -TerrainData.HALF + (cj + 0.5) * TREE_CHUNK)
 		var by_variant := {}
 		for t in list:
 			var vk := Vector2i(t["kind"], t["variant"])
@@ -328,12 +335,12 @@ func _grass_density(x: float, z: float) -> float:
 
 func build_grass() -> void:
 	var meshes := [MeshFactory.grass_clump(0), MeshFactory.grass_clump(1), MeshFactory.grass_clump(2)]
-	var chunks := int(512.0 / GRASS_CHUNK)
+	var chunks := int(float(TerrainData.N) / GRASS_CHUNK)
 	var spacing := 0.95 / sqrt(maxf(density_scale, 0.1))
 	var per := int(GRASS_CHUNK / spacing)
 	for cj in chunks:
 		for ci in chunks:
-			var origin := Vector3(-256.0 + (ci + 0.5) * GRASS_CHUNK, 0.0, -256.0 + (cj + 0.5) * GRASS_CHUNK)
+			var origin := Vector3(-TerrainData.HALF + (ci + 0.5) * GRASS_CHUNK, 0.0, -TerrainData.HALF + (cj + 0.5) * GRASS_CHUNK)
 			var buf := PackedFloat32Array()
 			var n := 0
 			for j in per:
@@ -372,12 +379,12 @@ func build_grass() -> void:
 
 func build_flowers() -> void:
 	var mesh := MeshFactory.flower()
-	var chunks := int(512.0 / FLOWER_CHUNK)
+	var chunks := int(float(TerrainData.N) / FLOWER_CHUNK)
 	var spacing := 0.7
 	var per := int(FLOWER_CHUNK / spacing)
 	for cj in chunks:
 		for ci in chunks:
-			var origin := Vector3(-256.0 + (ci + 0.5) * FLOWER_CHUNK, 0.0, -256.0 + (cj + 0.5) * FLOWER_CHUNK)
+			var origin := Vector3(-TerrainData.HALF + (ci + 0.5) * FLOWER_CHUNK, 0.0, -TerrainData.HALF + (cj + 0.5) * FLOWER_CHUNK)
 			var buf := PackedFloat32Array()
 			var n := 0
 			for j in per:

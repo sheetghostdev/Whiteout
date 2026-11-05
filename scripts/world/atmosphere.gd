@@ -26,7 +26,7 @@ func build() -> void:
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.66, 0.78, 0.92)
 	env.fog_light_energy = 1.0
-	env.fog_density = 0.00055
+	env.fog_density = 0.0004
 	env.fog_aerial_perspective = 0.3
 	env.fog_sky_affect = 0.0
 	env.fog_height = 120.0

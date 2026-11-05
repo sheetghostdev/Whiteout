@@ -1,11 +1,14 @@
 class_name TerrainData
 extends RefCounted
 ## Seeded, deterministic description of the world's shape: an island in a
-## wide sea, with mountains in the north, a lake and woods, and the roads,
-## village, hamlet and farm of the people who live there.
+## wide sea. Mountains wall the north, where a tarn feeds a beck that runs
+## down to a broad lake; the lake drains south-east to a harbour town at
+## the river mouth, watched by a lighthouse on its headland. Woods fill the
+## west around a woodcutters' camp, and the market village, its pond, the
+## farm and windmill share the central and southern meadows.
 ##
 ## Heights live on a (N+1)x(N+1) vertex grid with 1 m spacing that spans
-## [-256, 256] on X and Z. Coverage cells are the N x N squares between
+## [-HALF, HALF] on X and Z. Coverage cells are the N x N squares between
 ## vertices, so terrain, collision, coverage and shaders all share one
 ## coordinate system.
 
@@ -14,16 +17,30 @@ const V := N + 1
 const HALF := GameBalance.WORLD_HALF
 const SEA_LEVEL := 0.0
 const LAKE_LEVEL := 5.0
-const LAKE_CENTER := Vector2(135.0, -5.0)
+const LAKE_CENTER := Vector2(190.0, -45.0)
+const LAKE_SCALE := 1.45                 # lake_distance is in "lake units": metres / LAKE_SCALE
 const MOUTH_END := -6.0                  # coast distance where the river gives way to the sea
 const LAKE_REACH := 64.0                 # lake_distance where the basin rim stands
-const SPAWN := Vector2(3.0, 84.0)
-const TRAILHEAD := Vector2(0.0, 66.0)
+const SPAWN := Vector2(8.0, 102.0)
+const ISLAND_REACH := 326.0              # rough coast radius (rounded-square measure)
+const ISLAND_POWER := 2.7
+const CAPE_ANGLE := 0.5                  # the lighthouse headland, east-south-east
+# Village pond, small hills and their shapes: [centre, height, radius].
+const POND_CENTER := Vector2(104.0, 122.0)
+const POND_RADIUS := 11.0
+const HILLS := [
+	[Vector2(132.0, 222.0), 14.0, 26.0],    # sledding hill by the village
+	[Vector2(-26.0, 240.0), 9.0, 22.0],     # windmill hill
+	[Vector2(-232.0, -96.0), 11.0, 36.0],   # wooded knoll
+	[Vector2(-140.0, -30.0), 7.0, 30.0],
+	[Vector2(40.0, 30.0), 6.0, 34.0],
+]
 
 const REGION_MEADOWS := 0
 const REGION_WOODLAND := 1
 const REGION_LAKE := 2
 const REGION_HIGHLANDS := 3
+const REGION_COAST := 4
 
 var seed_value: int = 1337
 var heights := PackedFloat32Array()      # V*V vertex heights
@@ -54,11 +71,11 @@ func _setup_noise() -> void:
 	var s := seed_value
 	_n_broad.seed = s
 	_n_broad.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	_n_broad.frequency = 0.0045
+	_n_broad.frequency = 0.003
 	_n_broad.fractal_octaves = 3
 	_n_roll.seed = s + 11
 	_n_roll.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	_n_roll.frequency = 0.014
+	_n_roll.frequency = 0.01
 	_n_roll.fractal_octaves = 3
 	_n_detail.seed = s + 23
 	_n_detail.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -67,16 +84,16 @@ func _setup_noise() -> void:
 	_n_ridge.seed = s + 37
 	_n_ridge.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_n_ridge.fractal_type = FastNoiseLite.FRACTAL_RIDGED
-	_n_ridge.frequency = 0.0075
+	_n_ridge.frequency = 0.0052
 	_n_ridge.fractal_octaves = 5
 	_n_ridge.fractal_gain = 0.45
 	_n_warp.seed = s + 51
 	_n_warp.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	_n_warp.frequency = 0.006
+	_n_warp.frequency = 0.0045
 	_n_warp.fractal_octaves = 2
 	_n_region.seed = s + 67
 	_n_region.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	_n_region.frequency = 0.012
+	_n_region.frequency = 0.008
 	_n_region.fractal_octaves = 2
 
 
@@ -87,23 +104,28 @@ static func _smooth(e0: float, e1: float, x: float) -> float:
 
 func highland_mask(x: float, z: float) -> float:
 	var r := _n_roll.get_noise_2d(x, z)
-	return _smooth(-70.0, -185.0, z + r * 16.0 + _n_warp.get_noise_2d(x * 0.7, 40.0) * 22.0)
+	return _smooth(-105.0, -265.0, z + r * 24.0 + _n_warp.get_noise_2d(x * 0.7, 40.0) * 30.0)
 
 
 ## Distance inland from the coast (negative out at sea). The island is a
-## rounded square, warped by noise into bays and headlands.
+## rounded square, warped by noise into bays, with one long headland in the
+## east-south-east for the lighthouse.
 func coast_distance(x: float, z: float) -> float:
-	var wx := x + _n_warp.get_noise_2d(x * 1.3 + 900.0, z * 1.3) * 16.0
-	var wz := z + _n_warp.get_noise_2d(x * 1.3, z * 1.3 - 700.0) * 16.0
-	var r := pow(pow(absf(wx), 4.0) + pow(absf(wz), 4.0), 0.25)
-	var reach := 212.0 + _n_broad.get_noise_2d(x * 0.7 + 400.0, z * 0.7) * 12.0 + _n_detail.get_noise_2d(x * 0.3, z * 0.3) * 3.0
+	var wx := x + _n_warp.get_noise_2d(x * 1.3 + 900.0, z * 1.3) * 24.0
+	var wz := z + _n_warp.get_noise_2d(x * 1.3, z * 1.3 - 700.0) * 24.0
+	var r := pow(pow(absf(wx), ISLAND_POWER) + pow(absf(wz), ISLAND_POWER), 1.0 / ISLAND_POWER)
+	var reach := ISLAND_REACH + _n_broad.get_noise_2d(x * 0.7 + 400.0, z * 0.7) * 26.0 + _n_detail.get_noise_2d(x * 0.3, z * 0.3) * 4.0
+	var da := angle_difference(atan2(wz, wx), CAPE_ANGLE)
+	reach += 44.0 * exp(-da * da / (2.0 * 0.06 * 0.06))
 	return reach - r
 
 
+## Distance from the lake centre in "lake units" (metres / LAKE_SCALE), so
+## every lake threshold below is independent of the lake's size.
 func lake_distance(x: float, z: float) -> float:
 	var dx := (x - LAKE_CENTER.x)
 	var dz := (z - LAKE_CENTER.y) / 0.82
-	return sqrt(dx * dx + dz * dz) + _n_warp.get_noise_2d(x * 2.0 + 300.0, z * 2.0) * 12.0
+	return (sqrt(dx * dx + dz * dz) + _n_warp.get_noise_2d(x * 1.4 + 300.0, z * 1.4) * 16.0) / LAKE_SCALE
 
 
 func _raw_height(x: float, z: float, cd: float) -> float:
@@ -115,23 +137,24 @@ func _raw_height(x: float, z: float, cd: float) -> float:
 	var h := 10.0 + broad * 4.5 + roll * 2.0 + detail * 0.3
 
 	# Woodland: hillier, undulating forest floor in the west.
-	var wood := _smooth(-40.0, -140.0, wx)
-	h += wood * (roll * 3.2 + 2.5 + maxf(0.0, broad) * 6.0)
+	var wood := _smooth(-60.0, -210.0, wx)
+	h += wood * (roll * 3.6 + 3.0 + maxf(0.0, broad) * 7.0)
 
 	# Highlands: ridged mountains rising toward the north edge.
 	var hl := highland_mask(x, z)
 	if hl > 0.0:
 		var ridge := clampf(_n_ridge.get_noise_2d(wx, wz) * 0.5 + 0.5, 0.0, 1.0)
-		var mount := 10.0 + pow(ridge, 1.7) * 62.0 + broad * 10.0 + roll * 4.0
-		mount += _smooth(-120.0, -175.0, wz) * 24.0
+		var mount := 12.0 + pow(ridge, 1.6) * 78.0 + broad * 12.0 + roll * 5.0
+		mount += _smooth(-180.0, -262.0, wz) * 30.0
 		# Mountains run down to the sea rather than off the edge of the world.
-		mount *= _smooth(0.0, 50.0, cd)
+		mount *= _smooth(0.0, 70.0, cd)
 		h += pow(hl, 1.25) * mount
 
-	# Observation hills.
-	h += 15.0 * exp(-((x + 48.0) * (x + 48.0) + (z - 128.0) * (z - 128.0)) / (2.0 * 26.0 * 26.0))
-	h += 9.0 * exp(-((x - 92.0) * (x - 92.0) + (z - 92.0) * (z - 92.0)) / (2.0 * 20.0 * 20.0))
-	h += 7.0 * exp(-((x + 150.0) * (x + 150.0) + (z + 60.0) * (z + 60.0)) / (2.0 * 24.0 * 24.0))
+	# Named hills: the sledding hill, the windmill hill and a few knolls.
+	for hill in HILLS:
+		var c: Vector2 = hill[0]
+		var hr: float = hill[2]
+		h += float(hill[1]) * exp(-((x - c.x) * (x - c.x) + (z - c.y) * (z - c.y)) / (2.0 * hr * hr))
 
 	# Keep low ground from dipping into accidental puddles outside the lake.
 	if h < 7.0:
@@ -152,7 +175,7 @@ func _raw_height(x: float, z: float, cd: float) -> float:
 	# Coast: land eases down to sandy beaches, then shelves away under the sea.
 	if cd > 0.0:
 		var beach := 0.9 + detail * 0.3 + maxf(roll, 0.0) * 0.5
-		h = lerpf(beach, h, _smooth(1.0, lerpf(28.0, 12.0, hl), cd))
+		h = lerpf(beach, h, _smooth(1.0, lerpf(34.0, 14.0, hl), cd))
 	else:
 		h = lerpf(0.5, -12.0, _smooth(0.0, -34.0, cd))
 	return h
@@ -178,9 +201,10 @@ func generate(p_seed: int) -> void:
 			var cd := coast_distance(-HALF + i, z)
 			coast[row + i] = cd
 			heights[row + i] = _raw_height(-HALF + i, z, cd)
-	settlements.plan(p_seed)
+	settlements.plan(p_seed, self)
 	_level_settlements()
 	_build_rivers()
+	_carve_pond(POND_CENTER, POND_RADIUS)
 	_build_paths()
 	_build_lake_water()
 	_build_sea()
@@ -230,10 +254,10 @@ func _build_rivers() -> void:
 	# A mountain stream flows from a tarn down to the lake; the lake drains
 	# to the sea through a wider river in the south-east.
 	var defs := [
-		{"pts": [Vector2(-34, -150), Vector2(-10, -140), Vector2(18, -126), Vector2(50, -112), Vector2(74, -86),
-			Vector2(96, -64), Vector2(114, -42), Vector2(126, -24)], "w0": 2.6, "w1": 5.0, "start": -1.0, "end": LAKE_LEVEL, "tarn": true},
-		{"pts": [Vector2(158, 30), Vector2(172, 72), Vector2(164, 112), Vector2(150, 146),
-			Vector2(158, 172), Vector2(172, 192), Vector2(188, 212)], "w0": 5.5, "w1": 6.5, "start": LAKE_LEVEL, "end": SEA_LEVEL},
+		{"pts": [Vector2(-34, -246), Vector2(0, -232), Vector2(36, -214), Vector2(70, -190), Vector2(98, -160),
+			Vector2(120, -130), Vector2(138, -104), Vector2(150, -92)], "w0": 2.8, "w1": 5.5, "start": -1.0, "end": LAKE_LEVEL, "tarn": true},
+		{"pts": [Vector2(205, 15), Vector2(224, 70), Vector2(216, 124), Vector2(222, 170), Vector2(236, 208),
+			Vector2(252, 242), Vector2(266, 262), Vector2(292, 292)], "w0": 6.0, "w1": 7.5, "start": LAKE_LEVEL, "end": SEA_LEVEL},
 	]
 	rivers.clear()
 	for d in defs:
@@ -300,7 +324,7 @@ func _build_rivers() -> void:
 		if d.get("tarn", false):
 			var head := Vector2(pts3[0].x, pts3[0].z)
 			var down := (Vector2(pts3[3].x, pts3[3].z) - head).normalized()
-			_carve_tarn(head - down * 9.0, 12.0, pts3[0].y)
+			_carve_tarn(head - down * 12.0, 16.0, pts3[0].y)
 
 
 func _carve_river(pts: PackedVector3Array, widths: PackedFloat32Array) -> void:
@@ -402,6 +426,35 @@ func _carve_tarn(c: Vector2, r: float, level: float) -> void:
 			heights[idx] = h
 
 
+## The village pond: a round, shallow basin with its surface just below the
+## lowest ground on its rim, so it can never spill.
+func _carve_pond(c: Vector2, r: float) -> void:
+	var rim := 1.0e9
+	for k in 24:
+		var p := c + Vector2.from_angle(TAU * k / 24.0) * (r + 2.0)
+		rim = minf(rim, sample_height(p.x, p.y))
+	var level := rim - 0.35
+	var reach := int(r * 1.8) + 2
+	var ci := int(round(c.x + HALF))
+	var cj := int(round(c.y + HALF))
+	for j in range(maxi(cj - reach, 0), mini(cj + reach, V - 1) + 1):
+		for i in range(maxi(ci - reach, 0), mini(ci + reach, V - 1) + 1):
+			var p := Vector2(-HALF + i, -HALF + j)
+			var dd := p.distance_to(c) + _n_detail.get_noise_2d(p.x * 3.0, p.y * 3.0) * 1.2
+			var idx := j * V + i
+			var h := heights[idx]
+			if dd < r:
+				var q := dd / r
+				h = minf(h, level - 0.3 - 1.4 * (1.0 - q * q))
+				water_level[idx] = maxf(water_level[idx], level)
+			elif dd < r * 1.8:
+				# A low grassy bank around it.
+				h = maxf(h, lerpf(level + 0.25, h, _smooth(r, r * 1.8, dd)))
+				if dd < r + 0.8:
+					water_level[idx] = maxf(water_level[idx], level)
+			heights[idx] = h
+
+
 ## Level building pads and soften fields into the land.
 func _level_settlements() -> void:
 	for b in settlements.buildings:
@@ -486,14 +539,16 @@ func _classify_cells() -> void:
 		for ci in N:
 			var x := -HALF + ci + 0.5
 			var idx := cj * N + ci
-			var n := _n_region.get_noise_2d(x, z) * 22.0
+			var n := _n_region.get_noise_2d(x, z) * 28.0
 			var h := sample_height(x, z)
 			var r := REGION_MEADOWS
-			if z + n < -100.0 or (z + n < -78.0 and h > 22.0):
+			if z + n < -150.0 or (z + n < -110.0 and h > 32.0):
 				r = REGION_HIGHLANDS
-			elif x + n < -72.0:
+			elif x + n < -105.0 and z + n < 150.0:
 				r = REGION_WOODLAND
-			elif x + n > 76.0:
+			elif x + n > 115.0 and z + n > 105.0:
+				r = REGION_COAST
+			elif x + n > 105.0:
 				r = REGION_LAKE
 			cell_region[idx] = r
 			var wl := sample_water_level(x, z)

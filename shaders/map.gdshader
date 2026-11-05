@@ -6,7 +6,7 @@ shader_type canvas_item;
 uniform sampler2D relief : filter_linear;
 
 void fragment() {
-	vec2 xz = UV * 512.0 - 256.0;
+	vec2 xz = UV * WO_SIZE - WO_HALF;
 	vec4 r = texture(relief, UV);
 	float c = wo_cov(xz);
 	float m = r.a < 0.01 ? 0.0 : smoothstep(0.35, 0.95, c);
