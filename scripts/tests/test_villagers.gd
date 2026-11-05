@@ -97,6 +97,12 @@ func run(t, _full: bool) -> void:
 		if p.cold > 0.5:
 			cold += 1
 	t.check(cold <= 2, "bundled-up villagers are no longer freezing (%d)" % cold)
+	var t0 := Time.get_ticks_usec()
+	for k in 120:
+		v._process(1.0 / 60.0)
+	var per_frame := (Time.get_ticks_usec() - t0) / 120.0 / 1000.0
+	print("    villagers: %.2f ms per frame for %d people" % [per_frame, v.people.size()])
+	t.check(per_frame < 6.0, "the whole island's villagers cost little per frame (%.2f ms)" % per_frame)
 	sb.queue_free()
 	# Songbirds stay all summer and fly south once their ground is snowed over;
 	# gulls stay at the harbour.
