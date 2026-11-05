@@ -47,6 +47,15 @@ func open() -> void:
 	_list.add_child(_entry("wind", "Fly faster", "Your speed comes from the Wind upgrades (Breeze, Gale, Jet Stream).", true))
 	_list.add_child(_entry("eye", "Finding the last green", "Near the end, the last green ground glows softly. The Snow Compass upgrade adds an arrow that points to the nearest patch when none is close by.", true))
 	_list.add_child(_entry("crystal", "Grow", "Press TAB to open the upgrade web. Finishing a node reveals the nodes it connects to; keystones change how you play.", true))
+	var g0 := Control.new()
+	g0.custom_minimum_size = Vector2(0, 8)
+	_list.add_child(g0)
+	_list.add_child(UIKit.label("THE ISLANDERS", 15, UIKit.ACCENT))
+	_list.add_child(_entry("region", "Six towns", "Hearthwick, the market village in the meadows; Mere End on the lake; Saltmouth, the harbour at the river mouth " +
+		"with its lighthouse; Brookfield farm and its windmill; the woodcutters of Fernhollow; and the shepherd's hut at High Fold.", true))
+	_list.add_child(_entry("snowflake", "Winter comes", "Your first snow catches them unprepared: they hurry home shivering and light their fires " +
+		"(no one lights one in summer). After a while they come back out in coats, scarves and bobble hats, and then the fun begins: " +
+		"snowball fights, snowmen, skating on the frozen pond and lake, sledding, carols and ice fishing.", true))
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 8)
 	_list.add_child(gap)

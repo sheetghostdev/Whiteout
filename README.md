@@ -39,8 +39,8 @@ All bindings can be changed in Settings → Controls.
 
 ## The game in brief
 
-- **Goal:** freeze 100% of the island (about 174,000 m² of land in a wide
-  sea). Green means unfinished, white means done; the landscape itself is
+- **Goal:** freeze 100% of the island (about 365,000 m² of land in a wide
+  sea, 768 m across). Green means unfinished, white means done; the landscape itself is
   the progress bar.
 - **You are the cloud.** Everything along your path freezes in a single
   pass - there is no half-frozen ground to hunt for. Resting lays nothing
@@ -66,8 +66,11 @@ All bindings can be changed in Settings → Controls.
 - **Keystones change how you play:** Deep Freeze, Tailwind,
   Wanderers (cloudlets roam to green ground), Splintering Frost, Avalanche
   Rider (drift over a snowy mountainside to set it sliding; small hills
-  never slide), Mountain Air,
-  Thunderhead, Absolute Zero, Thaw Sense.
+  never slide), Mountain Air, Winter Festival (the islanders' snowmen,
+  skating, sledding and snowball fights earn you Frost), Thunderhead (an
+  anvil-topped storm cloud flickering with lightning), Thunderstrike
+  (lightning strikes nearby green ground and freezes it), Absolute Zero,
+  Thaw Sense.
 - **Three active skills** keep your hands busy to the end, and all of them
   scale with your size so they never fall behind: Squall (a ring of snow
   1.4x as far as your own snowfall reaches), Frost Wave (a wave as wide as
@@ -76,20 +79,37 @@ All bindings can be changed in Settings → Controls.
 - **Cloudlets** fly beside you, just outside your own snowfall, so their
   snow widens your swath instead of landing behind you or where you are
   about to go.
-- **The island:** Central Meadows, Woodland, Lake District and Highlands,
-  ringed by beaches and rocky shores, with distant islands on the horizon.
-  A mountain stream runs from a tarn down to the lake, and the lake drains
-  to the sea through a river. Lakes and rivers freeze with spreading ice
-  while you are out flying.
-- **People:** a village with a church and a well, a lakeside hamlet with a
-  pier, and a farm with a barn, fences, hay and fields of wheat, corn,
-  cabbages and sprouts that grow and ripen as you play. Snow frosts them at
-  once, then each plant slowly wilts, browns and slumps under it over about
-  two and a half minutes (frozen fields pay extra Frost). Villagers stroll the
-  roads; once snow settles around them they slow down, hug themselves,
-  stamp their feet and shiver. Snow settles on roofs only where it has
-  actually fallen, chimneys smoke, and your cloud eases up over rooftops as
-  if they were gentle hills.
+- **The island:** five regions - Central Meadows, Woodland, Lake District,
+  Highlands and Saltmouth Coast - ringed by beaches and rocky shores, with
+  distant islands on the horizon. Mountains wall the north; a beck runs from
+  a mountain tarn down to the lake, and the lake drains through a river to
+  the harbour town at its mouth, with a lighthouse out on the east headland.
+  Lakes, rivers and the village pond freeze with spreading ice while you
+  are out flying.
+- **Six towns, all joined by roads:** Hearthwick, the market village (a
+  square with a well, stalls, church and tavern, street lamps, a pond and a
+  sledding hill); Mere End on the lake (pier, boathouse, boats); Saltmouth
+  harbour (inn, harbour pier, boats, a bridge to the lighthouse);
+  Brookfield farm (barn, windmill, fields of wheat, corn, cabbages and
+  sprouts that grow as you play and slowly wilt under snow); the woodcutters'
+  camp at Fernhollow (cabins, sawmill, log piles, camp fire); and the
+  shepherd's hut at High Fold. Houses have timber framing or stone walls,
+  shutters and window boxes, lanterns, chimneys and gardens with laundry
+  lines and vegetable patches. Snow settles on roofs only where it has
+  actually fallen, and your cloud eases up over rooftops as if they were
+  gentle hills.
+- **The islanders live their lives:** about 85 people with homes, jobs and
+  families. In summer they farm, fish off the piers, chop wood, mind the
+  market, chat at the well, sit on benches and play tag. Your first snow
+  catches them unprepared - children stop to stare at the flakes and
+  everyone hurries home shivering. No one lights a fire in summer, but now
+  the hearths are lit house by house: chimneys smoke, windows glow, the
+  lamplighter does the street lamps and the lighthouse beam starts to turn.
+  After a while they come back out in coats, scarves and bobble hats to
+  shovel and fetch firewood, and then winter fun takes over: snowball fights
+  on the green, snowmen, skating on the frozen pond and lake, sledding down
+  the hill, carols by the church, ice fishing and warming up by the camp
+  fire.
   Regional milestones pay Frost; world milestones bring new, bigger nodes
   within reach.
 - **Ending:** when the world is frozen, a camera flight shows the ice age,
@@ -155,6 +175,18 @@ Key systems:
   following the computed water level of every vertex, so it can never float
   over land. Trees and bushes are always drawn at full detail (no LOD
   swaps), so nothing pops in or out, even in the closing flyover.
+- **SettlementPlan / SettlementBuilder** lay out and build the six towns:
+  buildings, props, fields, piers, the bridge, and the places people go
+  ("spots": the square, benches, the pier end, fields, the rink, the
+  sledding hill). Window panes and lanterns are a separate mesh lit by a tiny
+  "warmth" texture (one texel per building and per town), so each home's
+  fire and each town's street lamps light up on their own.
+- **Villagers** is a small agent simulation on a road graph: every islander
+  has a home, a role and a routine, walks routes found by A*, and picks
+  activities from the season of their own town (summer, caught by the
+  first snow, bundling up, winter fun). It is purely visual and never
+  touches the snow simulation; the Winter Festival keystone listens to it
+  for snowmen and play.
 - **WeatherManager** runs a fixed 30 Hz simulation. The player cloud moves
   every tick for crisp steering; other effects step every third tick,
   staggered by id, so heavy storms spread their cost across frames. Visuals
@@ -169,7 +201,8 @@ Key systems:
 ## Tests and balancing
 
 Headless test suite (coverage rules, upgrade-web integrity and economy
-audit, the cloud and every skill and keystone, save/load round trips,
+audit, the cloud and every skill and keystone, the villagers' seasons from
+summer through the first snow to winter fun, save/load round trips,
 performance under extreme late-game load, asset audit, the real main scene,
 and a full bot playthrough):
 
@@ -183,17 +216,18 @@ The balancing bot (`scripts/tests/balance_bot.gd`) plays the real
 simulation: it flies the cloud to the nearest green ground, drifts slowly
 over it in passes, fires skills when they would hit green ground, and shops by strategy (cheapest first, spread across
 branches, random, saving up, skills last). With the current tuning every
-strategy completes the island in about 10½–12½ bot-minutes. The first
+strategy completes the island in about 16½–18½ bot-minutes. The first
 purchase lands within seconds, and there is never much more than a minute
-without an affordable upgrade. About two thirds of the web gets bought, with
-about 5 open choices on average (9 at most), and the cloud ends at roughly a
-16 m radius. The bot always knows where the nearest green is and never
-pauses, so a person should take noticeably longer (roughly 25–35
+without an affordable upgrade (never more than about two and a half minutes). About two
+thirds of the web gets bought, with about 5 open choices on average (7 at
+most), and the cloud ends at roughly a 17 m radius. The bot always knows where the nearest green is and never
+pauses, so a person should take noticeably longer (roughly 45–60
 minutes); that still needs real playtesting to confirm.
 
 `scenes/visual_tour.tscn` boots the game, performs scripted actions and
 saves screenshots to `user://tour/` (scenarios: `basic`, `fx`, `late`,
-`ui`, `complete`, `island`, `snowcheck`, `round3`, `round4`, `edge`, `edgecloudlets`).
+`ui`, `complete`, `island`, `snowcheck`, `round3`, `round4`, `edge`, `edgecloudlets`, `towns`,
+`townswinter`, `cloudlook`).
 
 ## Performance notes
 

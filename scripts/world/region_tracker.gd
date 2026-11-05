@@ -36,7 +36,7 @@ func check(cov: SnowCoverage, prog: Progression) -> void:
 			if not region_reached(f, p):
 				continue
 			claimed[r].append(p)
-			var bonus := region_bonus(cov, r, p) * prog.stat("region_bonus")
+			var bonus := region_bonus(cov, r, p)
 			prog.add_frost(bonus)
 			region_milestone.emit(r, p, bonus, p == 100)
 	var wf := cov.world_completion()

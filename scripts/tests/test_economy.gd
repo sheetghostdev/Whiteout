@@ -157,7 +157,7 @@ func _audit(t) -> void:
 			milestone += RegionTracker.region_bonus(cov, r, pct)
 	var maxed := Progression.new()
 	buy_everything(maxed)
-	var ceiling := base * maxed.stat("frost_mult") + milestone * maxed.stat("region_bonus")
+	var ceiling := base * maxed.stat("frost_mult") + milestone
 	var all_costs := 0.0
 	for id in GameBalance.NODES:
 		for lv in int(GameBalance.NODES[id]["max"]):

@@ -12,6 +12,7 @@ var renderer: TerrainRenderer
 var foliage: FoliageBuilder
 var settlements: SettlementBuilder
 var atmosphere: Atmosphere
+var wildlife: Wildlife
 var height_texture: ImageTexture
 var water_texture: ImageTexture
 var built := false
@@ -53,6 +54,11 @@ func generate(seed_value: int, vegetation_density: float) -> void:
 	settlements.name = "Settlements"
 	add_child(settlements)
 	settlements.build(terrain, coverage)
+
+	wildlife = Wildlife.new()
+	wildlife.name = "Wildlife"
+	add_child(wildlife)
+	wildlife.setup(terrain, coverage)
 
 	progress.emit(0.55, "Planting forests")
 	await get_tree().process_frame

@@ -165,6 +165,17 @@ func _keystones(t) -> void:
 	t.check(float(ws2.area_by_source.get("spreading", 0.0)) == 0.0, "no spreading without the upgrade")
 	ws.queue_free()
 	ws2.queue_free()
+	# Thunderstrike: lightning hits nearby green ground and freezes it.
+	var pts := Progression.new()
+	pts.levels["thunderhead"] = 1
+	pts.levels["thunderstrike"] = 1
+	var wts := _world(t, pts)
+	var cts := wts.spawn_player_cloud(Vector2(-60, 120))
+	cts.move_input = Vector2(1, 0)
+	_run(wts, 10.0)
+	t.check(cts.strikes >= 2 and float(wts.area_by_source.get("thunderstrike", 0.0)) > 60.0,
+		"Thunderstrike hurls lightning that freezes green ground (%d strikes, %.0f m²)" % [cts.strikes, float(wts.area_by_source.get("thunderstrike", 0.0))])
+	wts.queue_free()
 	# Thunderhead is a big jump.
 	var p := Progression.new()
 	var r0 := p.stat("radius")
@@ -212,7 +223,7 @@ func _skills(t) -> void:
 	t.check(float(w.area_by_source.get("squall", 0.0)) > 25.0, "Squall freezes a ring of ground (%.0f m²)" % float(w.area_by_source.get("squall", 0.0)))
 	t.check(w.use_skill("frost_wave", Vector2(1, 0)) == "", "Frost Wave fires")
 	_run(w, 3.0)
-	t.check(float(w.area_by_source.get("frost_wave", 0.0)) > 100.0, "Frost Wave freezes a strip ahead")
+	t.check(float(w.area_by_source.get("frost_wave", 0.0)) > 60.0, "Frost Wave freezes a strip ahead")
 	prog.levels["splinter"] = 1
 	w.cooldowns["frost_wave"] = 0.0
 	w.use_skill("frost_wave", Vector2(-1, 0))

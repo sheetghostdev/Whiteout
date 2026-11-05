@@ -5,7 +5,7 @@ extends Node3D
 
 signal finished()
 
-const DURATION := 20.0
+const DURATION := 30.0
 
 var cam: Camera3D
 var _t := 0.0
@@ -25,13 +25,19 @@ func start(from: Transform3D, terrain: TerrainData) -> void:
 	var raw := [
 		[f, f + fwd * 20.0],
 		[f + Vector3(0, 28, 0) - fwd * 10.0, f + fwd * 40.0],
-		[Vector3(-30, 60, 120), Vector3(0, 10, 40)],
-		[Vector3(-130, 55, 90), Vector3(-160, 15, 10)],
-		[Vector3(-170, 80, -60), Vector3(-40, 40, -170)],
-		[Vector3(20, 120, -120), Vector3(120, 5, -10)],
-		[Vector3(170, 70, -30), Vector3(140, 5, 30)],
-		[Vector3(150, 90, 150), Vector3(0, 10, 0)],
-		[Vector3(0, 240, 300), Vector3(0, 0, -40)],
+		# Hearthwick under snow, smoke rising from every chimney.
+		[Vector3(20, 40, 215), Vector3(62, 8, 160)],
+		[Vector3(-40, 50, 270), Vector3(-26, 12, 240)],
+		# Over the farm and into the woods to the woodcutters' camp.
+		[Vector3(-170, 60, 160), Vector3(-226, 8, 30)],
+		# Up to the mountains and the frozen tarn.
+		[Vector3(-120, 110, -120), Vector3(-34, 60, -246)],
+		[Vector3(60, 130, -230), Vector3(190, 5, -45)],
+		# Across the frozen lake and down the river to the harbour.
+		[Vector3(250, 60, 60), Vector3(214, 5, 228)],
+		[Vector3(260, 45, 140), Vector3(323, 12, 177)],
+		# Pull back to see the whole white island.
+		[Vector3(0, 360, 520), Vector3(0, 0, -20)],
 	]
 	for r in raw:
 		var p: Vector3 = r[0]

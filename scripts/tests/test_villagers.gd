@@ -98,3 +98,25 @@ func run(t, _full: bool) -> void:
 			cold += 1
 	t.check(cold <= 2, "bundled-up villagers are no longer freezing (%d)" % cold)
 	sb.queue_free()
+	# Songbirds stay all summer and fly south once their ground is snowed over;
+	# gulls stay at the harbour.
+	var cov2 := SnowCoverage.new()
+	cov2.setup(terrain)
+	var wl := Wildlife.new()
+	(t as Node).add_child(wl)
+	wl.setup(terrain, cov2)
+	for k in 100:
+		wl._process(0.1)
+	var home := wl.flocks_home()
+	t.check(home == 4, "the songbirds are home in summer (%d flocks)" % home)
+	for k in 2:
+		cov2.apply_disc(0, 0, 600.0, 1.0)
+	for k in 700:
+		wl._process(0.1)
+	t.check(wl.flocks_home() == 0, "in winter the songbirds fly south")
+	var gulls_left := 0
+	for f in wl.flocks:
+		if f["spec"]["kind"] == "gull" and f["state"] != "circle":
+			gulls_left += 1
+	t.check(gulls_left == 0, "the gulls stay at the harbour")
+	wl.queue_free()

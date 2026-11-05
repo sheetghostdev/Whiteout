@@ -225,6 +225,21 @@ func _update_thaw(delta: float) -> void:
 
 
 # --------------------------------------------------------------- signals
+## Winter Festival: the villagers' fun pays Frost. A finished snowman is
+## worth about 15 seconds of your current income; every second of skating,
+## sledding or snowball fighting about 0.6% of a second's income.
+func on_villager_joy(kind: String, amount: float, town: int, _at: Vector3) -> void:
+	if prog == null or weather == null or not prog.has("festival") or state != "playing":
+		return
+	var rate := maxf(weather.frost_rate, 4.0)
+	var gain := amount * rate * (15.0 if kind == "snowman" else 0.006)
+	prog.add_frost(gain)
+	prog.stats["festival"] = float(prog.stats.get("festival", 0.0)) + gain
+	if kind == "snowman":
+		EventBus.notify.emit("%s BUILT A SNOWMAN" % String(SettlementPlan.TOWNS[town]["name"]).to_upper(),
+			"Winter Festival  +%s Frost" % UIKit.fmt(gain), "milestone")
+
+
 func _on_skill_unlocked(id: String) -> void:
 	EventBus.skill_unlocked.emit(id)
 	var sk: Dictionary = GameBalance.SKILLS[id]

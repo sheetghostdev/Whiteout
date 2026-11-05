@@ -183,7 +183,10 @@ func begin_play(is_new: bool) -> void:
 	letterbox.visible = false
 	player.spawn_at(TerrainData.SPAWN, 0.0)
 	world.settlements.reset_crops(not is_new)
-	world.settlements.villagers.prime(not is_new)
+	var vil := world.settlements.villagers
+	vil.prime(not is_new)
+	if not vil.joy.is_connected(Game.on_villager_joy):
+		vil.joy.connect(Game.on_villager_joy)
 	if is_new:
 		world.coverage.update_texture()
 		ShaderLib.set_global("wo_completion", 0.0)

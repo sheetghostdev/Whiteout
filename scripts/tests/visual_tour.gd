@@ -41,6 +41,8 @@ func _ready() -> void:
 			await _towns()
 		"townswinter":
 			await _towns_winter()
+		"cloudlook":
+			await _cloudlook()
 		"edgecloudlets":
 			for id in ["billow", "cloudlet", "more_cloudlets"]:
 				Game.prog.levels[id] = 2 if id != "cloudlet" else 1
@@ -503,27 +505,74 @@ func _towns() -> void:
 
 
 ## Each town at first snow (people hurrying home), then deep in winter.
+## Only the towns are snowed in, so the world is never "finished".
 func _towns_winter() -> void:
 	Game.start_new_game()
 	await _frames(10)
 	var sq := SettlementPlan.SQUARE
 	var vil: Villagers = Game.world.settlements.villagers
-	await _vista(sq, Vector2(0.6, 1.0), 40.0, -22, "c0_square_summer", 4.0)
+	await _sleep(6.0)
+	await _vista(sq + Vector2(-4, 6), Vector2(0.6, 1.0), 24.0, -24, "c0_square_summer", 2.0)
 	var cov := Game.world.coverage
-	for k in 3:
-		cov.apply_disc(0, 0, 600.0, 1.0)
+	for k in 2:
+		for town in SettlementPlan.TOWNS:
+			cov.apply_disc(town["center"].x, town["center"].y, float(town["radius"]) * 1.2, 1.0)
+		cov.apply_disc(TerrainData.HILLS[0][0].x, TerrainData.HILLS[0][0].y, 40.0, 1.0)
+		cov.apply_disc(130, -45, 34.0, 1.0)
 	cov.update_texture()
-	await _sleep(2.0)
-	await _vista(sq, Vector2(0.6, 1.0), 40.0, -22, "c0b_first_snow", 2.0)
-	# Deep winter: everything frozen and every town long snowed in.
+	await _sleep(3.0)
+	await _vista(sq + Vector2(-4, 6), Vector2(0.6, 1.0), 24.0, -24, "c0b_first_snow", 1.0)
 	for t in SettlementPlan.TOWNS.size():
 		vil._winter[t] = 200.0
 		vil._snow_frac[t] = 1.0
-	for p in vil.people:
-		p.act_t = 0.0
-	await _sleep(25.0)
+	await _sleep(40.0)
 	print("census ", vil.census(), " snowmen ", vil.snowmen_built(), " fires ", Game.world.settlements.fires_lit())
-	await _vista(sq, Vector2(0.6, 1.0), 45.0, -22, "c1_square_winter", 3.0)
-	await _vista(sq + Vector2(10, -10), Vector2(-0.4, 1.0), 120.0, -30, "c2_hearthwick_winter")
-	await _vista(Vector2(214, 228), Vector2(-0.7, -0.6), 90.0, -24, "c3_saltmouth_winter")
-	await _vista(Vector2(-226, 30), Vector2(0.8, 0.6), 40.0, -24, "c4_fernhollow_winter")
+	await _vista(sq + Vector2(-4, 6), Vector2(0.6, 1.0), 26.0, -24, "c1_square_winter", 1.0)
+	await _vista(Vector2(96, 146), Vector2(-0.6, 1.0), 22.0, -22, "c2_green_snowballs", 1.0)
+	await _vista(TerrainData.POND_CENTER, Vector2(-0.8, 0.6), 24.0, -26, "c3_pond_skating", 1.0)
+	var top: Vector2 = TerrainData.HILLS[0][0]
+	await _vista(top + Vector2(-14, -10), Vector2(-0.5, 0.9), 34.0, -18, "c4_sledding", 1.0)
+	await _vista(Vector2(125, -48), Vector2(-1.0, -0.2), 34.0, -24, "c5_mere_end_rink", 1.0)
+	await _vista(Vector2(214, 228), Vector2(-0.7, -0.6), 80.0, -22, "c6_saltmouth_winter", 1.0)
+	await _vista(Vector2(-226, 30), Vector2(0.8, 0.6), 26.0, -26, "c7_fernhollow_winter", 1.0)
+	await _vista(sq + Vector2(10, -10), Vector2(-0.4, 1.0), 110.0, -30, "c8_hearthwick_winter", 1.0)
+
+
+## The cloud itself: a small cumulus, flying with wisps, a towering cloud
+## and a thunderhead hurling lightning.
+func _cloudlook() -> void:
+	Game.start_new_game()
+	await _frames(10)
+	var c := _cloud()
+	c.visible = true
+	c.pos = Vector2(-60, 60)
+	_look(200, -12, 0.9)
+	await _sleep(2.0)
+	await _shot("d1_cumulus")
+	Game.player.autopilot = true
+	c.move_input = Vector2(0.9, 0.4).normalized()
+	_look(250, -10, 1.0)
+	await _sleep(3.0)
+	await _shot("d2_flying_wisps")
+	c.move_input = Vector2.ZERO
+	for id in ["billow", "swell", "towering"]:
+		Game.prog.levels[id] = GameBalance.NODES[id]["max"]
+	await _sleep(3.0)
+	_look(200, -8, 1.0)
+	await _sleep(1.0)
+	await _shot("d3_towering")
+	Game.prog.levels["thunderhead"] = 1
+	Game.prog.levels["thunderstrike"] = 1
+	c.pos = Vector2(-20, 40)
+	c.move_input = Vector2(0.3, 0.2)
+	_look(210, -6, 1.1)
+	for k in 40:
+		await _frames(1)
+		if c._bolt != null and c._bolt.visible:
+			break
+		await _sleep(0.25)
+	await _shot("d4_thunderhead")
+	c.move_input = Vector2.ZERO
+	_look(200, -40, 1.3)
+	await _sleep(1.0)
+	await _shot("d5_from_above")

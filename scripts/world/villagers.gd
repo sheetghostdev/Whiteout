@@ -19,6 +19,11 @@ extends Node3D
 ##
 ## Purely decorative: villagers never touch the snow simulation.
 
+## Winter fun, for the Winter Festival: a finished snowman (kind "snowman",
+## amount 1) or a second of skating, sledding or snowball fighting (amount
+## = seconds of play).
+signal joy(kind: String, amount: float, town: int, at: Vector3)
+
 const ANIMATE_RANGE := 190.0
 const WINTER_BUNDLE := 30.0     # town winter seconds before anyone comes back out
 const WINTER_FUN := 70.0        # ... before the fun starts
@@ -79,6 +84,7 @@ var _rng := RandomNumberGenerator.new()
 var _mat: StandardMaterial3D
 var _ball_mesh: SphereMesh
 var _clock := 0.0
+var _joy_timer := 0.0
 # Road graph.
 var _nodes := PackedVector2Array()
 var _adj: Array = []
@@ -987,6 +993,15 @@ func _process(delta: float) -> void:
 		_place(p, delta, near or not p.seen)
 		p.seen = true
 	_update_balls(delta)
+	_joy_timer += delta
+	if _joy_timer >= 1.0:
+		var players := 0
+		for p in people:
+			if p.mode == "do" and p.act in ["skate", "sled", "snowball"]:
+				players += 1
+		if players > 0:
+			joy.emit("play", float(players) * _joy_timer, -1, Vector3.ZERO)
+		_joy_timer = 0.0
 
 
 func _step(p: Person, delta: float) -> void:
@@ -1016,6 +1031,9 @@ func _step(p: Person, delta: float) -> void:
 			if s != null:
 				_grow_snowman(s, delta / 26.0)
 				if float(s["progress"]) >= 1.0 and p.anim != "admire":
+					if not s.get("cheered", false):
+						s["cheered"] = true
+						joy.emit("snowman", 1.0, p.town, (s["node"] as Node3D).position)
 					p.anim = "admire"
 					p.act_t = minf(p.act_t, 3.0)
 				elif p.anim == "roll":
